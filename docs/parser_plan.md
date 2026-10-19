@@ -159,8 +159,26 @@ One JSON object per line, sorted by `paper_id`, in `data/processed/ismir_2020_20
 | `body` | none of the above (method, data, experiments, results…) |
 
 - A heading can get **several labels**: "DISCUSSION AND CONCLUSION" → `[discussion, conclusion]`; "INTRODUCTION AND RELATED WORK" → `[introduction, related_work]`; "RESULTS AND DISCUSSION" → `[discussion]`; "CONCLUSION AND FUTURE WORK" → `[conclusion]`. This avoids arbitrary precedence rules and duplicated text.
-- **Subsections** (number like `6.1`) that only get `body` inherit the labels of their parent number (e.g. `6.1` under `6. CONCLUSION` → `[conclusion]`).
+- **Subsections** (number like `6.1`) that only get `body` inherit the labels of their parent number (e.g. `6.1` under `6. CONCLUSION` → `[conclusion]`). If the parent heading was lost, the subsection gets `body`.
 - `body` is only used when nothing else matches.
+
+#### Rules for GROBID's false and missing headings
+
+GROBID turns some algorithm lines, table captions, table numbers and LLM prompts into headings, and loses some real headings. The labeler walks through the sections in document order and applies these rules, from highest to lowest precedence:
+
+1. **Back matter:** every `back` section gets `acknowledgments` or `ethics` if its heading matches them, and `appendix` otherwise (e.g. GROBID types `annex`, `contribution`).
+2. **Appendix region:** the first `body` section whose number or heading starts with a single capital letter and a dot (`A.`, `B. RESULTS`, `A.1 Prompt`), or whose heading contains APPENDIX/SUPPLEMENTARY, starts the appendix. It and every following `body` section get `appendix`, unless they match `acknowledgments` or `ethics`. This only applies after at least one numbered top-level section, so papers numbered `I., II., …` are not mistaken for appendices. (Example: 2025_000029's appendix contains LLM-generated responses, which must stay out of the style analyses.)
+3. **Empty first heading:** if the first `body` section has an empty heading, it gets `introduction`.
+4. **Keywords:** a heading that matches the label table gets those labels.
+5. **Numbered sections without keywords:** a top-level section gets `body`; a subsection inherits its parent's labels (see above).
+6. **False headings:** a `body` section with no number and no keyword inherits the labels of the previous section. A top-level number that is not greater than the previous valid top-level number (e.g. `2` after `5`) is treated as a false heading in the same way. This neutralizes most false headings (algorithm lines, captions, prompts).
+
+Two refinements:
+
+- **Appendix backfill:** when an appendix region starts (rule 2), it is extended backwards over the run of unnumbered, keyword-less `body` sections between the last numbered or keyword section and the appendix start. Papers without an appendix region are not affected, so an unnumbered "Limitations." paragraph after the conclusion stays in the analysis. (Fixes 2025_000029, where GROBID lost the heading of Appendix A and its LLM responses followed the conclusion.)
+- **Ethics:** a heading containing ETHIC gets `ethics` only if (a) it looks like a statement: it also contains STATEMENT or CONSIDERATION, or it is just "ETHICS"; or (b) the section comes after a conclusion or is in back matter. Otherwise the ETHIC keyword is ignored. (2021_000037, a paper *about* ethics, keeps its sections in the analysis; an "ETHICS STATEMENT" after a final "DISCUSSION" is still excluded.)
+
+Why: wrongly **including** LLM-generated text or ethics statements in the style analyses is worse than wrongly **excluding** a human paragraph. The first error correlates with year (papers quoting LLM responses and ethics statements concentrate in 2024–2025), so it would inflate exactly the effect we want to measure; the second only loses a little text. Errors that only swap `body`, `related_work` or `discussion` don't matter, since all of those enter the analysis.
 
 ## 6. Phases
 
@@ -196,8 +214,9 @@ One JSON object per line, sorted by `paper_id`, in `data/processed/ismir_2020_20
   2. Remove NUL, control characters and `�`
   3. Join line-break hyphens: `word- word` with a lowercase letter after the space (`clas- sifies` → `classifies`). Real compounds have no space after the hyphen (`state-of-the-art`) and must stay intact.
   4. Remove leftover citation brackets: `[12]`, `[3, 4]`, `[5–7]`
-  5. Remove URLs and e-mail addresses
-  6. Normalize whitespace
+  5. Remove URLs and e-mail addresses, including URLs that GROBID split after a dot or a slash (`https://github. com/user/repo`). The sentence-final punctuation after a URL is kept.
+  6. Fix leftovers of removed citations and URLs: empty brackets (`( )`, `[ ]`, `([4], [5])`), the space before punctuation (`music , as` → `music, as`; decimals like `.154` are kept) and doubled separators (`,,`, `,)`, `(,`).
+  7. Normalize whitespace: one space inside paragraphs, paragraph breaks (`\n\n`) kept
 - `SectionLabeler` implementing the label table and rules in Section 5.
 - Tests (`tests/test_cleaner.py`, `tests/test_labeler.py`) with concrete examples: each cleaning step, compounds kept intact, and the real headings listed in Section 3 (including the four spellings of acknowledgments, combined headings and subsection inheritance).
 - **Done when:** tests pass, and you show me every heading in the test set with its labels.
@@ -253,6 +272,12 @@ One JSON object per line, sorted by `paper_id`, in `data/processed/ismir_2020_20
 - Unit tests with small TEI fixtures.
 - Merging `parsing/requirements.txt` with the scraper's `requirements.txt`.
 - Better handling of constructions like "pre- and post-processing".
+
+Known limitations of v1 (also for the README):
+
+- Headings lost by GROBID are not recovered (e.g. 2024_000018 section 4, 2025_000026 section 2); their subsections get `body`.
+- Dashes dropped by GROBID are not restored (`betweenborrowing` in 2024_000001); the TEI itself has the words joined.
+- Citation leftovers after "e.g."/"i.e." can leave punctuation such as `e.g.,.` (punctuation only, no effect on words).
 
 ## 10. Definition of done (v1)
 

@@ -231,8 +231,14 @@ def _write_atomically(path: Path, content: bytes) -> None:
     os.replace(tmp_path, path)
 
 
-def _read_ids(ids_file: Path) -> list[str]:
+def read_ids(ids_file: Path) -> list[str]:
+    """Read one paper_id per line, skipping blank lines."""
     return [line.strip() for line in ids_file.read_text().splitlines() if line.strip()]
+
+
+def pdf_path_for(pdf_dir: Path, paper_id: str) -> Path:
+    """Path of a paper's PDF: `{pdf_dir}/{year}/{paper_id}.pdf`."""
+    return pdf_dir / paper_id.split("_")[0] / f"{paper_id}.pdf"
 
 
 def _print_debug(paper: Paper) -> None:
@@ -254,11 +260,9 @@ def main() -> None:
     args = parser.parse_args()
 
     grobid = GrobidParser(force=args.force)
-    for paper_id in _read_ids(args.ids_file):
-        year = paper_id.split("_")[0]
-        pdf_path = args.pdf_dir / year / f"{paper_id}.pdf"
+    for paper_id in read_ids(args.ids_file):
         try:
-            _print_debug(grobid.parse(pdf_path))
+            _print_debug(grobid.parse(pdf_path_for(args.pdf_dir, paper_id)))
         except (GrobidError, ValueError, OSError) as error:
             print(f"\n=== {paper_id}  ERROR: {error}")
 
