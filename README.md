@@ -27,7 +27,7 @@ Every upload keeps its version in the file name, and nothing is overwritten. Thi
 
 | Version | Git commit | Date | Changes |
 |---|---|---|---|
-| v1 | *(filled in when committed)* | 2026-10-20 | first version: 655 papers |
+| v1 | `939fa4a` | 2026-10-20 | first version: 655 papers |
 
 **Versioning rule:** any change to cleaning or labeling produces a new `v{N}` (new file names, new row in the table above, new `pipeline_version` in the records). Don't mix versions in one analysis.
 
