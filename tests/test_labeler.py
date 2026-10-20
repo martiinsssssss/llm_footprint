@@ -73,6 +73,23 @@ def test_keyword_labels(heading: str, expected: list[str]) -> None:
     assert SectionLabeler().keyword_labels(heading) == expected
 
 
+@pytest.mark.parametrize(
+    "heading",
+    # Real misspellings: 2021_000046, 2022_000005, 2022_000052, 2022_000085, 2024_000072
+    ["ACKNOLWEDGEMENTS", "ACKNOWLEGMENT", "AKNOWLEDGEMENTS", "ACKNOLEDGEMENT", "ACKNOWLEGDEMENTS"],
+)
+def test_misspelled_acknowledgments(heading: str) -> None:
+    assert SectionLabeler().keyword_labels(heading) == ACK
+    check([(("5", "CONCLUSION", "body", None), CONC),
+           (("6", heading, "body", None), ACK),
+           (("7", heading, "back", None), ACK)])
+
+
+@pytest.mark.parametrize("heading", ["ALIGNMENT", "ACCOMPANIMENT", "KNOWLEDGE GRAPHS"])
+def test_similar_words_are_not_acknowledgments(heading: str) -> None:
+    assert SectionLabeler().keyword_labels(heading) == []
+
+
 def test_body_only_when_nothing_matches() -> None:
     check([(("1", "INTRODUCTION", "body", None), INTRO),
            (("2", "EXPERIMENTS AND RESULTS", "body", None), BODY)])

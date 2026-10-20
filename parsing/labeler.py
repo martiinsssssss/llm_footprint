@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import difflib
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -24,6 +25,13 @@ KEYWORDS: dict[str, tuple[str, ...]] = {
 BODY = "body"
 APPENDIX = "appendix"
 
+# Misspelled acknowledgments ("ACKNOLWEDGEMENTS", "AKNOWLEDGEMENTS"): a heading
+# that is a single word this similar to ACKNOWLEDGMENTS also gets the label.
+# On the full corpus the misspellings score 0.90-0.93 and the next closest
+# single-word heading ("ALIGNMENT") 0.58.
+ACKNOWLEDGMENTS_WORD = "ACKNOWLEDGMENTS"
+ACKNOWLEDGMENTS_MIN_SIMILARITY = 0.8
+
 # Labels that keep their own identity inside back matter and appendices.
 STANDALONE_LABELS = ("acknowledgments", "ethics")
 
@@ -39,10 +47,16 @@ ETHICS_STATEMENT_WORDS = ("STATEMENT", "CONSIDERATION")
 
 @dataclass
 class LabelResult:
-    """Labels of each section, plus the indices that got `appendix` by backfill."""
+    """Labels of each section, plus where the body appendix region starts.
+
+    `appendix_start` is the index of the section that started the body appendix
+    region (rule 2), or None; `backfilled` are the indices that got `appendix`
+    by backfill, all just before `appendix_start`.
+    """
 
     labels: list[list[str]]
     backfilled: list[int]
+    appendix_start: int | None = None
 
 
 @dataclass
@@ -112,7 +126,9 @@ class SectionLabeler:
         backfilled = self._backfill_appendix(sections, appendix_start)
         for index in backfilled:
             all_labels[index] = [APPENDIX]
-        return LabelResult(labels=all_labels, backfilled=backfilled)
+        return LabelResult(
+            labels=all_labels, backfilled=backfilled, appendix_start=appendix_start
+        )
 
     def keyword_labels(self, heading: str) -> list[str]:
         """Labels whose keywords appear in the heading, in table order."""
@@ -121,6 +137,7 @@ class SectionLabeler:
             label
             for label, keywords in KEYWORDS.items()
             if any(keyword in upper for keyword in keywords)
+            or (label == "acknowledgments" and _is_misspelled_acknowledgments(upper))
         ]
 
     def _label_one(self, section: Section, state: _State) -> list[str]:
@@ -202,6 +219,14 @@ class SectionLabeler:
         if number is None or not number.isdigit():
             return False
         return state.last_top_level is None or int(number) > state.last_top_level
+
+
+def _is_misspelled_acknowledgments(upper_heading: str) -> bool:
+    words = re.sub(r"[^A-Z ]", " ", upper_heading).split()
+    if len(words) != 1:
+        return False
+    similarity = difflib.SequenceMatcher(None, words[0], ACKNOWLEDGMENTS_WORD).ratio()
+    return similarity >= ACKNOWLEDGMENTS_MIN_SIMILARITY
 
 
 def _is_subsection(number: str | None) -> bool:

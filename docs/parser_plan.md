@@ -101,7 +101,8 @@ parsing/
 ├── cleaner.py         # TextCleaner (shared text normalization)
 ├── quality.py         # per-paper flags and artifact counters + per-year report
 ├── pipeline.py        # Pipeline (orchestrates everything)
-└── run.py             # CLI entry point
+├── run.py             # CLI entry point
+└── review.py          # label review reports on a JSONL (ethics, backfill, appendix starts, misplaced back sections)
 tests/
 ├── test_cleaner.py
 └── test_labeler.py
@@ -161,6 +162,7 @@ One JSON object per line, sorted by `paper_id`, in `data/processed/ismir_2020_20
 - A heading can get **several labels**: "DISCUSSION AND CONCLUSION" → `[discussion, conclusion]`; "INTRODUCTION AND RELATED WORK" → `[introduction, related_work]`; "RESULTS AND DISCUSSION" → `[discussion]`; "CONCLUSION AND FUTURE WORK" → `[conclusion]`. This avoids arbitrary precedence rules and duplicated text.
 - **Subsections** (number like `6.1`) that only get `body` inherit the labels of their parent number (e.g. `6.1` under `6. CONCLUSION` → `[conclusion]`). If the parent heading was lost, the subsection gets `body`.
 - `body` is only used when nothing else matches.
+- **Misspelled acknowledgments:** a heading that is a single word with similarity ≥ 0.8 to ACKNOWLEDGMENTS (`difflib` ratio) also gets `acknowledgments` (e.g. ACKNOLWEDGEMENTS, AKNOWLEDGEMENTS, ACKNOWLEGMENT). On the full corpus the five misspellings score 0.90–0.93 and the next closest single-word heading 0.58.
 
 #### Rules for GROBID's false and missing headings
 
