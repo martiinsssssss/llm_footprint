@@ -30,7 +30,7 @@ The analyses (Liang et al., Kobak et al., EditLens) work on word frequencies and
 - Work only on branch `feature/parser`. Never commit to or push `main`.
 - **One phase at a time.** At the end of each phase: summarize what you did in plain language, explain any design decision, tell me exactly how to test it, and **wait for my OK** before the next phase.
 - After I approve a phase, commit with a clear message. Don't push unless I ask.
-- Only create or change files in `parsing/`, `tests/`, the parser section of `README.md`, and the one `.gitignore` line described in Phase 0. Ask before touching anything else.
+- Only create or change files in `parsing/`, `tests/`, the parser section of `README.md`, and the `.gitignore` changes agreed in Phases 0 and 4. Ask before touching anything else.
 - **Inputs are read-only:** never modify, move or rename anything in `data/pdfs/` or the `data/metadata_*.csv` files.
 - Python 3.12 (the `.venv/` already exists). Code, comments and docstrings in English. Type hints. Small functions.
 - Do **not** use LLM- or VLM-based extraction tools (Nougat, olmOCR, Marker's LLM mode…): we measure AI writing style, and a generative model in the extraction step could alter the text we measure.
@@ -86,6 +86,7 @@ The analyses (Liang et al., Kobak et al., EditLens) work on word frequencies and
   ```
 
 - Dependencies go in **`parsing/requirements.txt`** (requests, lxml, pandas, pytest), **not** in a root `requirements.txt`: the scraper branch already has one, and we'll merge the two later.
+- **Data sharing:** nothing under `data/` is committed to git. The output JSONL, the quality report CSV and a zip of the TEI cache (`data/interim/tei/`) are shared through the group's shared Google Drive folder. To use them, download them into `data/processed/` (and unzip the TEI cache into `data/interim/`). Every upload keeps its version in the file name (`ismir_2020_2025_v1.jsonl`, `quality_report_v1.csv`, `tei_cache_v1.zip`), and the README records which git commit produced each version. With the TEI cache, anyone can regenerate the JSONL without Docker or GROBID.
 
 ## 5. Architecture (first version)
 
@@ -187,7 +188,7 @@ Why: wrongly **including** LLM-generated text or ethics statements in the style 
 ### Phase 0 — Setup
 
 - Create the structure above (empty modules, one-line docstring each) and `parsing/requirements.txt`.
-- In `.gitignore`, add `!data/processed/` right after `data/*`, so the output JSONL and report can be shared through git. Everything else in `data/` stays ignored.
+- ~~In `.gitignore`, add `!data/processed/` right after `data/*`~~ — superseded in Phase 4: the dataset is shared through the Drive (Section 4), so the line was removed and nothing under `data/` is committed.
 - Create `parsing/sample_ids.txt` with this test set (one id per line):
   - Normal papers, two per year: `2020_000005`, `2020_000006`, `2021_000001`, `2021_000002`, `2022_000001`, `2022_000002`, `2023_000001`, `2023_000002`, `2024_000001`, `2024_000002`, `2025_000001`, `2025_000002`
   - Headings hard to detect with plain text extraction: `2023_000089`, `2024_000018`, `2024_000108`, `2025_000026`
@@ -219,6 +220,7 @@ Why: wrongly **including** LLM-generated text or ethics statements in the style 
   5. Remove URLs and e-mail addresses, including URLs that GROBID split after a dot or a slash (`https://github. com/user/repo`). The sentence-final punctuation after a URL is kept.
   6. Fix leftovers of removed citations and URLs: empty brackets (`( )`, `[ ]`, `([4], [5])`), the space before punctuation (`music , as` → `music, as`; decimals like `.154` are kept) and doubled separators (`,,`, `,)`, `(,`).
   7. Normalize whitespace: one space inside paragraphs, paragraph breaks (`\n\n`) kept
+  8. Remove letter-by-letter noise: runs of 30 or more consecutive single-character tokens (e.g. LaTeX image data that some PDFs carry as invisible text, `A A A C 1 n i c j V H L…`). Shorter sequences (`x y z`) are kept. The number of removed tokens is recorded per paper (see Phase 4).
 - `SectionLabeler` implementing the label table and rules in Section 5.
 - Tests (`tests/test_cleaner.py`, `tests/test_labeler.py`) with concrete examples: each cleaning step, compounds kept intact, and the real headings listed in Section 3 (including the four spellings of acknowledgments, combined headings and subsection inheritance).
 - **Done when:** tests pass, and you show me every heading in the test set with its labels.
@@ -249,8 +251,9 @@ Why: wrongly **including** LLM-generated text or ethics statements in the style 
   - `hyphen_breaks`: matches of `\b[a-z]+- [a-z]+\b`
   - `ligatures`: characters in `ﬀ`–`ﬆ`
   - `bad_chars`: NUL, control characters, `�`
+  - `char_run_tokens_removed`: tokens removed by cleaning step 8 (set by the cleaner); the report shows its rate per 1,000 words, so what was removed per year is visible
 - Per-year report saved to `data/processed/quality_report_v1.csv` and printed: number of papers, parse errors, % of papers with each warning, artifacts per 1,000 words, % with acknowledgments, % with ethics, median `n_words`.
-- README, parser section: how to start GROBID, how to run the parser, the output schema, the notes in Section 7, and the versioning rule (any change to cleaning or labeling → new `v{N}` output file).
+- README, parser section: how to start GROBID, how to run the parser, the output schema, the notes in Section 7, the versioning rule (any change to cleaning or labeling → new `v{N}` output file), the known limitations, and the data sharing workflow: where the JSONL, report and TEI cache live in the shared Drive, how to download them into `data/processed/`, how to zip and upload the TEI cache, and a table recording which git commit produced each version.
 - **Done when:** the report exists for the full corpus. Artifact rates should be close to 0 and similar across years; if they aren't, show me which papers are responsible.
 
 ## 7. Notes for the analysis (also copy into the README)
@@ -275,15 +278,12 @@ Why: wrongly **including** LLM-generated text or ethics statements in the style 
 - Merging `parsing/requirements.txt` with the scraper's `requirements.txt`.
 - Better handling of constructions like "pre- and post-processing".
 
-Known limitations of v1 (also for the README):
-
-- Headings lost by GROBID are not recovered (e.g. 2024_000018 section 4, 2025_000026 section 2); their subsections get `body`.
-- Dashes dropped by GROBID are not restored (`betweenborrowing` in 2024_000001); the TEI itself has the words joined.
-- Citation leftovers after "e.g."/"i.e." can leave punctuation such as `e.g.,.` (punctuation only, no effect on words).
+Known limitations of v1: see the README (Parser → Known limitations), which is the single maintained list.
 
 ## 10. Definition of done (v1)
 
 - `python -m parsing.run ...` processes all 655 PDFs with one command and gives an identical file when re-run.
 - The same labeling and cleaning for every paper, whatever its year.
 - Per-year quality report next to the dataset, with artifact rates close to 0 in every year.
-- Tests pass, README updated, and the JSONL committed in `data/processed/` on `feature/parser`.
+- Tests pass and README updated on `feature/parser`.
+- The JSONL, the quality report and the TEI cache zip uploaded to the shared Drive with `v1` in their names, and the producing commit recorded in the README.

@@ -31,6 +31,14 @@ SPACE_BEFORE_PUNCTUATION = re.compile(r" +(?=[,;:!?)\]]|\.(?!\d))")
 DOUBLED_SEPARATOR = re.compile(r"[,;]\s*(?=[,;)\]])")
 SEPARATOR_AFTER_OPENING = re.compile(r"(?<=[(\[])\s*[,;]\s*")
 
+# Letter-by-letter noise: invisible text in some PDFs (e.g. LaTeX image data)
+# that GROBID extracts as "A A A C 1 n i c j V H L ...". Runs this long never
+# occur in prose; short sequences such as "x y z" are kept.
+MIN_CHAR_RUN = 30
+# Applied after whitespace normalization, so tokens are separated by single
+# spaces and a run never spans a paragraph break.
+CHAR_RUN = re.compile(rf"(?<!\S)(?:\S ){{{MIN_CHAR_RUN - 1},}}\S(?!\S)")
+
 
 class TextCleaner:
     """Normalizes text identically for every paper, whatever its year or source.
@@ -40,19 +48,31 @@ class TextCleaner:
     """
 
     def clean(self, text: str) -> str:
+        return self.clean_with_stats(text)[0]
+
+    def clean_with_stats(self, text: str) -> tuple[str, int]:
+        """Clean the text; also return how many tokens the char-run step removed."""
         text = self._normalize_unicode(text)
         text = self._remove_bad_characters(text)
         text = self._join_line_break_hyphens(text)
         text = self._remove_citation_brackets(text)
         text = self._remove_urls_and_emails(text)
         text = self._remove_empty_brackets_and_stray_spaces(text)
-        return self._normalize_whitespace(text)
+        text = self._normalize_whitespace(text)
+        text, removed = self._remove_char_runs(text)
+        return text, removed
 
     def clean_paper(self, paper: Paper) -> None:
-        """Clean the abstract and every section text of `paper` in place."""
-        paper.abstract = self.clean(paper.abstract)
+        """Clean the abstract and every section text of `paper` in place.
+
+        Records the tokens removed as letter-by-letter noise in
+        `paper.artifacts["char_run_tokens_removed"]`.
+        """
+        paper.abstract, removed = self.clean_with_stats(paper.abstract)
         for section in paper.sections:
-            section.text = self.clean(section.text)
+            section.text, section_removed = self.clean_with_stats(section.text)
+            removed += section_removed
+        paper.artifacts["char_run_tokens_removed"] = removed
 
     def _normalize_unicode(self, text: str) -> str:
         """NFKC turns ligatures into letters ("ﬁ" -> "fi") and unifies look-alikes."""
@@ -83,6 +103,13 @@ class TextCleaner:
         text = SPACE_BEFORE_PUNCTUATION.sub("", text)
         text = DOUBLED_SEPARATOR.sub("", text)
         return SEPARATOR_AFTER_OPENING.sub("", text)
+
+    def _remove_char_runs(self, text: str) -> tuple[str, int]:
+        """Remove runs of MIN_CHAR_RUN or more single-character tokens; count their tokens."""
+        removed = sum(len(match.group(0).split()) for match in CHAR_RUN.finditer(text))
+        if removed == 0:
+            return text, 0
+        return self._normalize_whitespace(CHAR_RUN.sub("", text)), removed
 
     def _normalize_whitespace(self, text: str) -> str:
         paragraphs = re.split(r"\n\s*\n", text)

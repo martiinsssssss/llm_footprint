@@ -18,6 +18,7 @@ from parsing.grobid_parser import (
 from parsing.labeler import SectionLabeler
 from parsing.metadata import load_metadata
 from parsing.pipeline import DEFAULT_WORKERS, Pipeline
+from parsing.quality import QualityChecker
 
 
 def parse_args() -> argparse.Namespace:
@@ -60,15 +61,17 @@ def main() -> None:
     pdf_paths = find_pdfs(args.pdf_dir, args.ids_file, args.years)
     print(f"Processing {len(pdf_paths)} PDFs with {args.workers} workers")
 
+    checker = QualityChecker()
     pipeline = Pipeline(
         parser=GrobidParser(force=args.force),
         labeler=SectionLabeler(),
         cleaner=TextCleaner(),
-        checker=None,
+        checker=checker,
         metadata=metadata,
         workers=args.workers,
     )
-    pipeline.run(pdf_paths, args.out)
+    papers = pipeline.run(pdf_paths, args.out)
+    checker.save_report(papers, args.out)
 
     if args.ids_file is None and not args.years:
         processed = {path.stem for path in pdf_paths}

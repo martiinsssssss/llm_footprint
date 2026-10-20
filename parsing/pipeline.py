@@ -29,7 +29,7 @@ class Pipeline:
     """Turns PDFs into labeled, cleaned Papers and writes them to JSONL.
 
     Every component is passed in, so each one can be replaced or tested alone.
-    `checker` may be None until the quality checks exist (Phase 4).
+    `checker` may be None to skip the quality checks.
     """
 
     def __init__(
