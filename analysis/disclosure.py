@@ -1,7 +1,8 @@
 """Find possible AI-use disclosures (RQ1): every sentence that mentions an AI tool.
 
 Each hit still needs a manual check, because many ISMIR papers study LLMs
-or only mention them. Fill the empty `label` column of the output by hand.
+or only mention them. Label each paper on the QA page (`docker compose up -d qa`) (or fill the
+`label` and `note` columns by hand).
 
 Usage: python -m analysis.disclosure data/processed/ismir_2020_2025_v1.jsonl --out data/processed/disclosure_hits_v1.csv
 """
@@ -35,7 +36,7 @@ TERMS = {
 }
 PATTERNS = {name: re.compile(pattern) for name, pattern in TERMS.items()}
 SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
-COLUMNS = ["paper_id", "year", "section", "section_labels", "terms", "sentence", "label"]
+COLUMNS = ["paper_id", "year", "title", "section", "section_labels", "terms", "sentence", "label", "note"]
 
 
 def find_hits(paper: Paper) -> list[dict[str, object]]:
@@ -48,9 +49,9 @@ def find_hits(paper: Paper) -> list[dict[str, object]]:
             terms = [name for name, pattern in PATTERNS.items() if pattern.search(sentence)]
             if terms:
                 rows.append({
-                    "paper_id": paper.paper_id, "year": paper.year, "section": heading,
+                    "paper_id": paper.paper_id, "year": paper.year, "title": paper.title, "section": heading,
                     "section_labels": labels, "terms": "|".join(terms),
-                    "sentence": sentence.strip(), "label": "",
+                    "sentence": sentence.strip(), "label": "", "note": "",
                 })
     return rows
 
