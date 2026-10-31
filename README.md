@@ -6,15 +6,15 @@ Each scraper lives in `scrapers/` and runs in one shared Docker image.
 
 ### ISMIR
 
-Downloads ISMIR papers (2020–2025) and saves metadata plus the abstract, discussion and conclusion of each paper to `<out>/metadata_<year>.csv` (one file per year; re-running a year replaces only that file). PDFs go to `<out>/pdfs/<year>/`. Change `$(pwd)/data` to pick the output folder.
+Downloads ISMIR papers (2020–2025) and saves metadata plus the abstract, discussion and conclusion of each paper to `<out>/metadata_<year>.csv` (one file per year; re-running a year replaces only that file). PDFs go to `<out>/pdfs/<year>/`. Change `--out data` to pick the output folder (a path inside the repository).
 
 The `doi` column is empty for 2020–2021: those conference pages link straight to the PDF instead of a DOI.
 
 ```bash
-docker build -t scrapers .                                                                  # build the image
-docker run --rm -v "$(pwd)/data:/data" scrapers scrapers/ismir.py --out /data                     # all years
-docker run --rm -v "$(pwd)/data:/data" scrapers scrapers/ismir.py --out /data --years 2024 2025   # some years
-docker run --rm -v "$(pwd)/data:/data" scrapers scrapers/ismir.py --out /data --limit 3           # quick test
+docker compose build                                                                  # build the image
+docker compose run --rm --no-deps app scrapers/ismir.py --out data                      # all years
+docker compose run --rm --no-deps app scrapers/ismir.py --out data --years 2024 2025    # some years
+docker compose run --rm --no-deps app scrapers/ismir.py --out data --limit 3            # quick test
 ```
 
 ## Parser (`parsing/`)
@@ -164,3 +164,18 @@ These come mostly from GROBID; none of them puts LLM-generated text or ethics st
 - **Stray footnote numbers:** footnote markers that GROBID doesn't tag stay in the text as lone digits (`…for weakly aligned data. 1 This procedure…`), about 190 in the corpus.
 - **Dashes dropped by GROBID** are not restored: `betweenborrowing` in 2024_000001 is already joined in GROBID's output.
 - Citation leftovers after "e.g."/"i.e." can leave punctuation such as `e.g.,.` (punctuation only), and "pre- and post-processing" becomes "preand post-processing".
+
+## Analysis (`analysis/`)
+
+Works on the parser's JSONL. `generate.py` (synthetic abstracts) and `classify.py` (human vs. LLM) are not implemented yet.
+
+```bash
+# Features of every abstract -> one CSV row per abstract (source = human)
+docker compose run --rm --no-deps app -m analysis.features data/processed/ismir_2020_2025_v1.jsonl --out data/processed/features_v1.csv
+# Every sentence that mentions an AI tool -> CSV with an empty `label` column to fill by hand
+docker compose run --rm --no-deps app -m analysis.disclosure data/processed/ismir_2020_2025_v1.jsonl --out data/processed/disclosure_hits_v1.csv
+```
+
+Features (after Fröhling & Zubiaga 2021): character, syllable, word and sentence counts and their ratios, Flesch reading ease, type-token ratio, MTLD, stop-word and hapax shares, word 1/2/3-gram overlap between consecutive sentences, shares of words in the top 100/1,000/10,000 English words (`wordfreq`), and the share of each POS tag and named entities per 100 words (spaCy `en_core_web_sm`). A word is any token that is not punctuation or whitespace.
+
+`analysis.disclosure` does not overwrite an existing output (it may hold manual labels) unless you pass `--force`.
