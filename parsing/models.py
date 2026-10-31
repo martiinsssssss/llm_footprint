@@ -3,18 +3,14 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
 
 
 @dataclass
 class Section:
-    """One section of a paper, as found by the parser.
-
-    `grobid_type` is the GROBID `div/@type` (e.g. "annex", "acknowledgement").
-    It is only used for labeling and is not written to the JSONL output.
-    """
+    """One section of a paper. `grobid_type` (GROBID `div/@type`) is only used for labeling, not written out."""
 
     heading: str
     number: str | None
@@ -22,25 +18,6 @@ class Section:
     labels: list[str] = field(default_factory=list)
     text: str = ""
     grobid_type: str | None = None
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "heading": self.heading,
-            "number": self.number,
-            "location": self.location,
-            "labels": list(self.labels),
-            "text": self.text,
-        }
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> Section:
-        return cls(
-            heading=data["heading"],
-            number=data["number"],
-            location=data["location"],
-            labels=list(data["labels"]),
-            text=data["text"],
-        )
 
 
 @dataclass
@@ -70,38 +47,19 @@ class Paper:
         return len(self.full_text.split())
 
     def to_dict(self) -> dict[str, Any]:
-        return {
-            "paper_id": self.paper_id,
-            "year": self.year,
-            "title": self.title,
-            "authors": self.authors,
-            "doi": self.doi,
-            "abstract": self.abstract,
-            "sections": [section.to_dict() for section in self.sections],
-            "full_text": self.full_text,
-            "n_words": self.n_words,
-            "warnings": list(self.warnings),
-            "artifacts": dict(self.artifacts),
-            "parser": self.parser,
-            "pipeline_version": self.pipeline_version,
-        }
+        data = asdict(self)
+        for section in data["sections"]:
+            del section["grobid_type"]
+        # Key order of the JSONL: computed fields go right after `sections`.
+        tail = {key: data.pop(key) for key in ("warnings", "artifacts", "parser", "pipeline_version")}
+        return {**data, "full_text": self.full_text, "n_words": self.n_words, **tail}
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Paper:
         """Build a Paper from `to_dict()` output; `full_text` and `n_words` are recomputed."""
-        return cls(
-            paper_id=data["paper_id"],
-            year=data["year"],
-            title=data["title"],
-            authors=data["authors"],
-            doi=data["doi"],
-            abstract=data["abstract"],
-            sections=[Section.from_dict(section) for section in data["sections"]],
-            warnings=list(data["warnings"]),
-            artifacts=dict(data["artifacts"]),
-            parser=data["parser"],
-            pipeline_version=data["pipeline_version"],
-        )
+        fields = {key: value for key, value in data.items() if key not in ("full_text", "n_words")}
+        fields["sections"] = [Section(**section) for section in data["sections"]]
+        return cls(**fields)
 
 
 def write_jsonl(papers: Iterable[Paper], path: Path) -> None:

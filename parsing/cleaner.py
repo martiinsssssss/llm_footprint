@@ -52,15 +52,13 @@ class TextCleaner:
 
     def clean_with_stats(self, text: str) -> tuple[str, int]:
         """Clean the text; also return how many tokens the char-run step removed."""
-        text = self._normalize_unicode(text)
+        text = unicodedata.normalize("NFKC", text)  # ligatures -> letters ("ﬁ" -> "fi")
         text = self._remove_bad_characters(text)
-        text = self._join_line_break_hyphens(text)
-        text = self._remove_citation_brackets(text)
-        text = self._remove_urls_and_emails(text)
+        text = LINE_BREAK_HYPHEN.sub("", text)
+        text = CITATION_BRACKET.sub("", text)
+        text = EMAIL.sub("", URL.sub(_keep_trailing_punctuation, text))
         text = self._remove_empty_brackets_and_stray_spaces(text)
-        text = self._normalize_whitespace(text)
-        text, removed = self._remove_char_runs(text)
-        return text, removed
+        return self._remove_char_runs(self._normalize_whitespace(text))
 
     def clean_paper(self, paper: Paper) -> None:
         """Clean the abstract and every section text of `paper` in place.
@@ -74,10 +72,6 @@ class TextCleaner:
             removed += section_removed
         paper.artifacts["char_run_tokens_removed"] = removed
 
-    def _normalize_unicode(self, text: str) -> str:
-        """NFKC turns ligatures into letters ("ﬁ" -> "fi") and unifies look-alikes."""
-        return unicodedata.normalize("NFKC", text)
-
     def _remove_bad_characters(self, text: str) -> str:
         """Drop NUL, control characters (except newlines and tabs) and "�"."""
         return "".join(
@@ -86,16 +80,6 @@ class TextCleaner:
             if char in "\n\t"
             or (char != REPLACEMENT_CHARACTER and unicodedata.category(char) != "Cc")
         )
-
-    def _join_line_break_hyphens(self, text: str) -> str:
-        return LINE_BREAK_HYPHEN.sub("", text)
-
-    def _remove_citation_brackets(self, text: str) -> str:
-        return CITATION_BRACKET.sub("", text)
-
-    def _remove_urls_and_emails(self, text: str) -> str:
-        text = URL.sub(_keep_trailing_punctuation, text)
-        return EMAIL.sub("", text)
 
     def _remove_empty_brackets_and_stray_spaces(self, text: str) -> str:
         """Fix leftovers of removed citations/URLs: "music [1], as" -> "music , as" -> "music, as"."""

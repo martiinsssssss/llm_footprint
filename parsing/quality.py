@@ -14,7 +14,7 @@ from parsing.models import Paper, read_jsonl
 MIN_MAIN_SECTIONS = 3
 MAIN_LABELS = {"introduction", "related_work", "body", "discussion", "conclusion"}
 
-# Warnings, in report order. `parse_error` and `no_metadata` are set by the Pipeline.
+# Warnings, in report order. `parse_error` and `no_metadata` are set by parsing.run.
 WARNINGS = (
     "parse_error",
     "no_metadata",

@@ -257,7 +257,9 @@ def main() -> None:
         for section in paper.sections:
             number = section.number or "-"
             labels = ", ".join(section.labels)
-            print(f"  {number:>6}  {section.location:<4}  {labels:<26}  {section.heading[:70]}")
+            grobid_type = f"  [{section.grobid_type}]" if section.grobid_type else ""
+            print(f"  {number:>6}  {section.location:<4}  {labels:<26}  {section.heading[:70]}"
+                  f"{grobid_type}  ({len(section.text.split())} words)")
 
 
 if __name__ == "__main__":

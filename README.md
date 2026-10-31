@@ -99,42 +99,27 @@ def style_text(paper) -> str:
 
 v1 summary: no parse errors, no missing metadata or abstracts. `no_conclusion` is 7.2% overall (11.3% in 2020, 3.5–10.1% in other years): mostly papers that end with a discussion. All artifact rates are ≤ 0.006 per 1,000 words in every year; the few `split_words` hits are false positives (math notation such as `W e ∈ R`). Letter-by-letter noise removed: 29.0 tokens per 1,000 words in 2020, 11.5 in 2021, 2.3 in 2022 and below 0.3 from 2023 on, 20,681 tokens in total from 18 papers, mostly 2020_000099 (9,968), 2021_000067 (4,929) and 2020_000188 (4,281). Without this step those three papers had about twice their real length.
 
-To recompute the report from a downloaded JSONL: `python -m parsing.quality data/processed/ismir_2020_2025_v1.jsonl`.
+To recompute the report from a downloaded JSONL: `docker compose run --rm app -m parsing.quality data/processed/ismir_2020_2025_v1.jsonl`.
 
 ### Running the parser
 
-```bash
-python -m venv .venv && source .venv/bin/activate     # Python 3.12
-pip install -r parsing/requirements.txt
-```
-
-**Option A: from the TEI cache (no Docker, no GROBID).** Download `tei_cache_v{N}.zip` from the Drive and unzip it into `data/interim/`, so the files end up in `data/interim/tei/{year}/{paper_id}.tei.xml`:
+Everything runs in Docker, in the same image as the scrapers (Docker Desktop with at least 4 GB of memory). `compose.yaml` starts GROBID next to it and waits until it is ready; the repository is mounted into the container, so code edits need no rebuild.
 
 ```bash
-unzip tei_cache_v1.zip -d data/interim/
+docker compose build                       # once, or after changing requirements.txt
 ```
-
-The parser reads a paper's TEI from the cache instead of calling GROBID, so the run takes seconds and gives exactly the same JSONL. (It prints a warning that GROBID isn't reachable; that's fine.) Use this to regenerate the dataset after changing the cleaning or labeling.
-
-**Option B: from the PDFs, with GROBID.** Needs Docker Desktop with at least 4 GB of memory:
-
-```bash
-docker run --rm --init --ulimit core=0 -p 8070:8070 grobid/grobid:0.9.1-crf
-# if a platform error appears, add: --platform linux/amd64
-curl localhost:8070/api/isalive   # should print true
-```
-
-Processing all 655 PDFs takes about 4 minutes on a MacBook Air with 4 workers; TEI files are cached in `data/interim/tei/`, so later runs only redo the cheap steps (`--force` ignores the cache).
 
 **Run** (from the repository root):
 
 ```bash
-python -m parsing.run --pdf-dir data/pdfs --metadata-dir data \
-  --out data/processed/ismir_2020_2025_v1.jsonl \
+docker compose run --rm app -m parsing.run --out data/processed/ismir_2020_2025_v1.jsonl \
   [--ids-file parsing/sample_ids.txt] [--years 2024 2025] [--workers 4] [--force]
+docker compose down                        # stop GROBID when done
 ```
 
 This writes the JSONL and `quality_report_v1.csv` next to it, and prints progress and a summary. `parsing/sample_ids.txt` is a 22-paper test set with normal papers and known edge cases. Re-running gives an identical file.
+
+Processing all 655 PDFs takes about 5 minutes with 4 workers. TEI files are cached in `data/interim/tei/`, so later runs take seconds and only redo the cheap steps (`--force` ignores the cache). To skip GROBID's work entirely, download `tei_cache_v{N}.zip` from the Drive and unzip it so the files end up in `data/interim/tei/{year}/{paper_id}.tei.xml`: `unzip tei_cache_v1.zip -d data/interim/`. The run then gives exactly the same JSONL; use this to regenerate the dataset after changing the cleaning or labeling.
 
 **Uploading a new version to the Drive:**
 
@@ -148,10 +133,9 @@ This writes the JSONL and `quality_report_v1.csv` next to it, and prints progres
 **Other commands:**
 
 ```bash
-pytest                                                          # unit tests (cleaner, labeler)
-python -m parsing.grobid_parser                                 # debug: abstract length + headings of the test set
-python -m parsing.labeler                                       # debug: every section of the test set with its labels
-python -m parsing.review data/processed/ismir_2020_2025_v1.jsonl  # label review reports
+docker compose run --rm app -m pytest                     # unit tests (cleaner, labeler)
+docker compose run --rm app -m parsing.labeler            # debug: every section of the test set with labels and word counts
+docker compose run --rm app -m parsing.review data/processed/ismir_2020_2025_v1.jsonl  # label review reports
 ```
 
 `parsing.review` prints every `ethics` section, every section labeled `appendix` by the backfill rule, where each appendix region starts (flagging those that start before the conclusion), and the back sections with a numeric number (body text that GROBID misplaced).

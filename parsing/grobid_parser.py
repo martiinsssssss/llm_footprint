@@ -1,8 +1,7 @@
-"""GROBID-based parser: PDF to cached TEI (GrobidParser) and TEI to Paper (TeiReader)."""
+"""GROBID-based parser: PDF to cached TEI (GrobidParser) and TEI to Paper (read_tei)."""
 
 from __future__ import annotations
 
-import argparse
 import copy
 import os
 import re
@@ -14,7 +13,7 @@ from lxml import etree
 
 from parsing.models import Paper, Section
 
-GROBID_URL = "http://localhost:8070"
+GROBID_URL = os.environ.get("GROBID_URL", "http://localhost:8070")
 TEI_CACHE_DIR = Path("data/interim/tei")
 REQUEST_TIMEOUT_SECONDS = 300
 
@@ -59,12 +58,11 @@ class GrobidParser:
         self.cache_dir = cache_dir
         self.timeout = timeout
         self.force = force
-        self.reader = TeiReader()
 
     def parse(self, pdf_path: Path) -> Paper:
         """Parse one PDF into a Paper (without CSV metadata, labels or cleaning)."""
         paper_id, year = paper_id_and_year(pdf_path)
-        return self.reader.read(self.get_tei(pdf_path), paper_id, year)
+        return read_tei(self.get_tei(pdf_path), paper_id, year)
 
     def get_tei(self, pdf_path: Path) -> bytes:
         """Return the TEI for a PDF, from the cache unless `force` is set."""
@@ -105,54 +103,45 @@ class GrobidParser:
         return response.content
 
 
-class TeiReader:
-    """Turns a GROBID TEI document into a Paper with abstract and sections."""
+def read_tei(tei: bytes, paper_id: str, year: int) -> Paper:
+    """Turn a GROBID TEI document into a Paper with abstract and sections."""
+    root = etree.fromstring(tei)
+    return Paper(paper_id=paper_id, year=year, abstract=_abstract(root), sections=_sections(root))
 
-    def read(self, tei: bytes, paper_id: str, year: int) -> Paper:
-        root = etree.fromstring(tei)
-        return Paper(
-            paper_id=paper_id,
-            year=year,
-            abstract=self._abstract(root),
-            sections=self._sections(root),
-        )
 
-    def _abstract(self, root: etree._Element) -> str:
-        abstract = root.find("tei:teiHeader/tei:profileDesc/tei:abstract", NS)
-        if abstract is None:
-            return ""
-        # The abstract is wrapped as <abstract><div><p>...</p></div></abstract>.
-        paragraphs = _without_noise(abstract).iter(f"{{{TEI_NS}}}p")
-        blocks = [_normalize_space("".join(p.itertext())) for p in paragraphs]
-        return "\n\n".join(block for block in blocks if block)
+def _abstract(root: etree._Element) -> str:
+    abstract = root.find("tei:teiHeader/tei:profileDesc/tei:abstract", NS)
+    if abstract is None:
+        return ""
+    # The abstract is wrapped as <abstract><div><p>...</p></div></abstract>.
+    paragraphs = _without_noise(abstract).iter(f"{{{TEI_NS}}}p")
+    blocks = [_normalize_space("".join(p.itertext())) for p in paragraphs]
+    return "\n\n".join(block for block in blocks if block)
 
-    def _sections(self, root: etree._Element) -> list[Section]:
-        sections: list[Section] = []
-        for location in ("body", "back"):
-            container = root.find(f"tei:text/tei:{location}", NS)
-            if container is None:
-                continue
-            for div, grobid_type in _content_divs(container):
-                sections.append(self._section(div, location, grobid_type))
-        return sections
 
-    def _section(
-        self, div: etree._Element, location: str, grobid_type: str | None
-    ) -> Section:
-        head = div.find("tei:head", NS)
-        if head is not None:
-            heading = _normalize_space("".join(head.itertext()))
-            number = (head.get("n") or "").rstrip(".") or None
-        else:
-            heading = grobid_type or ""
-            number = None
-        return Section(
-            heading=heading,
-            number=number,
-            location=location,
-            text=_content_text(_without_noise(div)),
-            grobid_type=grobid_type,
-        )
+def _sections(root: etree._Element) -> list[Section]:
+    sections = []
+    for location in ("body", "back"):
+        container = root.find(f"tei:text/tei:{location}", NS)
+        if container is not None:
+            sections += [_section(div, location, t) for div, t in _content_divs(container)]
+    return sections
+
+
+def _section(div: etree._Element, location: str, grobid_type: str | None) -> Section:
+    head = div.find("tei:head", NS)
+    if head is not None:
+        heading = _normalize_space("".join(head.itertext()))
+        number = (head.get("n") or "").rstrip(".") or None
+    else:
+        heading, number = grobid_type or "", None
+    return Section(
+        heading=heading,
+        number=number,
+        location=location,
+        text=_content_text(_without_noise(div)),
+        grobid_type=grobid_type,
+    )
 
 
 def _content_divs(
@@ -239,33 +228,3 @@ def read_ids(ids_file: Path) -> list[str]:
 def pdf_path_for(pdf_dir: Path, paper_id: str) -> Path:
     """Path of a paper's PDF: `{pdf_dir}/{year}/{paper_id}.pdf`."""
     return pdf_dir / paper_id.split("_")[0] / f"{paper_id}.pdf"
-
-
-def _print_debug(paper: Paper) -> None:
-    print(f"\n=== {paper.paper_id}  abstract: {len(paper.abstract.split())} words, "
-          f"sections: {len(paper.sections)}, total: {paper.n_words} words")
-    for section in paper.sections:
-        number = section.number or "-"
-        grobid_type = f"  [{section.grobid_type}]" if section.grobid_type else ""
-        print(f"  {number:>6}  {section.location:<4}  {section.heading}{grobid_type}"
-              f"  ({len(section.text.split())} words)")
-
-
-def main() -> None:
-    """Debug command: print the abstract length and section list of each sample paper."""
-    parser = argparse.ArgumentParser(description=main.__doc__)
-    parser.add_argument("--ids-file", type=Path, default=Path("parsing/sample_ids.txt"))
-    parser.add_argument("--pdf-dir", type=Path, default=Path("data/pdfs"))
-    parser.add_argument("--force", action="store_true", help="ignore the TEI cache")
-    args = parser.parse_args()
-
-    grobid = GrobidParser(force=args.force)
-    for paper_id in read_ids(args.ids_file):
-        try:
-            _print_debug(grobid.parse(pdf_path_for(args.pdf_dir, paper_id)))
-        except (GrobidError, ValueError, OSError) as error:
-            print(f"\n=== {paper_id}  ERROR: {error}")
-
-
-if __name__ == "__main__":
-    main()

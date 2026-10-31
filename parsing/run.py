@@ -1,8 +1,12 @@
-"""Command-line entry point for running the parser pipeline."""
+"""Command-line entry point: PDFs -> parse, label, clean, check -> JSONL + quality report."""
 
 from __future__ import annotations
 
 import argparse
+import sys
+import time
+from collections import Counter
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import requests
@@ -12,12 +16,13 @@ from parsing.grobid_parser import (
     GROBID_URL,
     PAPER_ID_PATTERN,
     GrobidParser,
+    paper_id_and_year,
     pdf_path_for,
     read_ids,
 )
 from parsing.labeler import SectionLabeler
 from parsing.metadata import load_metadata
-from parsing.pipeline import DEFAULT_WORKERS, Pipeline
+from parsing.models import Paper, write_jsonl
 from parsing.quality import QualityChecker
 
 
@@ -28,7 +33,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--ids-file", type=Path, help="only process these paper ids")
     parser.add_argument("--years", type=int, nargs="+", help="only process these years")
-    parser.add_argument("--workers", type=int, default=DEFAULT_WORKERS)
+    parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--force", action="store_true", help="ignore the TEI cache")
     return parser.parse_args()
 
@@ -40,16 +45,38 @@ def find_pdfs(pdf_dir: Path, ids_file: Path | None, years: list[int] | None) -> 
     else:
         paths = [p for p in pdf_dir.glob("*/*.pdf") if PAPER_ID_PATTERN.match(p.stem)]
     if years:
-        paths = [p for p in paths if int(p.stem.split("_")[0]) in years]
+        paths = [p for p in paths if paper_id_and_year(p)[1] in years]
     return sorted(paths)
 
 
-def grobid_is_alive(server_url: str = GROBID_URL) -> bool:
+def grobid_is_alive() -> bool:
     try:
-        response = requests.get(f"{server_url}/api/isalive", timeout=5)
+        response = requests.get(f"{GROBID_URL}/api/isalive", timeout=5)
     except requests.RequestException:
         return False
     return response.ok and response.text.strip() == "true"
+
+
+def process_one(
+    pdf_path: Path, grobid: GrobidParser, metadata: dict[str, dict[str, str]]
+) -> tuple[Paper, str | None]:
+    """Process one PDF. A failure gives a metadata-only record with the `parse_error` warning."""
+    paper_id, year = paper_id_and_year(pdf_path)
+    error = None
+    try:
+        paper = grobid.parse(pdf_path)
+        SectionLabeler().label_paper(paper)
+        TextCleaner().clean_paper(paper)
+    except Exception as exc:  # one bad PDF must not stop the run
+        error = f"{type(exc).__name__}: {exc}"
+        paper = Paper(paper_id=paper_id, year=year, warnings=["parse_error"])
+    row = metadata.get(paper_id)
+    if row is None:
+        paper.warnings.append("no_metadata")
+    else:
+        paper.title, paper.authors, paper.doi = row["title"], row["authors"], row["doi"]
+    QualityChecker().check(paper)
+    return paper, error
 
 
 def main() -> None:
@@ -61,21 +88,32 @@ def main() -> None:
     pdf_paths = find_pdfs(args.pdf_dir, args.ids_file, args.years)
     print(f"Processing {len(pdf_paths)} PDFs with {args.workers} workers")
 
-    checker = QualityChecker()
-    pipeline = Pipeline(
-        parser=GrobidParser(force=args.force),
-        labeler=SectionLabeler(),
-        cleaner=TextCleaner(),
-        checker=checker,
-        metadata=metadata,
-        workers=args.workers,
-    )
-    papers = pipeline.run(pdf_paths, args.out)
-    checker.save_report(papers, args.out)
+    start = time.monotonic()
+    grobid = GrobidParser(force=args.force)
+    papers: list[Paper] = []
+    errors: dict[str, str] = {}
+    with ThreadPoolExecutor(max_workers=args.workers) as executor:
+        futures = [executor.submit(process_one, path, grobid, metadata) for path in pdf_paths]
+        for done, future in enumerate(as_completed(futures), start=1):
+            paper, error = future.result()
+            papers.append(paper)
+            if error:
+                errors[paper.paper_id] = error
+            status = f"parse_error ({error})" if error else f"{len(paper.sections)} sections"
+            print(f"[{done}/{len(pdf_paths)}] {paper.paper_id}: {status}", file=sys.stderr, flush=True)
+    write_jsonl(papers, args.out)
+
+    per_year = Counter(paper.year for paper in papers)
+    warnings = Counter(warning for paper in papers for warning in paper.warnings)
+    print(f"\nDone in {time.monotonic() - start:.0f}s: {len(papers)} papers -> {args.out}")
+    print("Per year: " + ", ".join(f"{year}: {n}" for year, n in sorted(per_year.items())))
+    print("Warnings: " + (", ".join(f"{w}: {n}" for w, n in sorted(warnings.items())) or "none"))
+    for paper_id, error in sorted(errors.items()):
+        print(f"  parse_error {paper_id}: {error}")
+    QualityChecker().save_report(papers, args.out)
 
     if args.ids_file is None and not args.years:
-        processed = {path.stem for path in pdf_paths}
-        missing = sorted(set(metadata) - processed)
+        missing = sorted(set(metadata) - {path.stem for path in pdf_paths})
         print(f"Metadata rows without a PDF: {len(missing)}" + (f" {missing}" if missing else ""))
 
 

@@ -85,7 +85,7 @@ The analyses (Liang et al., Kobak et al., EditLens) work on word frequencies and
   curl localhost:8070/api/isalive   # should return true
   ```
 
-- Dependencies go in **`parsing/requirements.txt`** (requests, lxml, pandas, pytest), **not** in a root `requirements.txt`: the scraper branch already has one, and we'll merge the two later.
+- Dependencies are in the root `requirements.txt`, shared with the scrapers; the parser runs in the same Docker image (`compose.yaml` adds GROBID).
 - **Data sharing:** nothing under `data/` is committed to git. The output JSONL, the quality report CSV and a zip of the TEI cache (`data/interim/tei/`) are shared through the group's shared Google Drive folder. To use them, download them into `data/processed/` (and unzip the TEI cache into `data/interim/`). Every upload keeps its version in the file name (`ismir_2020_2025_v1.jsonl`, `quality_report_v1.csv`, `tei_cache_v1.zip`), and the README records which git commit produced each version. With the TEI cache, anyone can regenerate the JSONL without Docker or GROBID.
 
 ## 5. Architecture (first version)
@@ -93,16 +93,14 @@ The analyses (Liang et al., Kobak et al., EditLens) work on word frequencies and
 ```
 parsing/
 ├── __init__.py
-├── requirements.txt
 ├── sample_ids.txt     # test set (Phase 0)
 ├── models.py          # Section, Paper + JSONL read/write
 ├── metadata.py        # load the metadata CSVs → {paper_id: row}
-├── grobid_parser.py   # GrobidParser (PDF → TEI, cached) + TeiReader (TEI → Paper)
+├── grobid_parser.py   # GrobidParser (PDF → TEI, cached) + read_tei (TEI → Paper)
 ├── labeler.py         # SectionLabeler (heading → labels)
 ├── cleaner.py         # TextCleaner (shared text normalization)
 ├── quality.py         # per-paper flags and artifact counters + per-year report
-├── pipeline.py        # Pipeline (orchestrates everything)
-├── run.py             # CLI entry point
+├── run.py             # CLI entry point: parse → label → clean → check, in parallel
 └── review.py          # label review reports on a JSONL (ethics, backfill, appendix starts, misplaced back sections)
 tests/
 ├── test_cleaner.py

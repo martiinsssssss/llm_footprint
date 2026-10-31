@@ -13,11 +13,10 @@ import re
 from collections import Counter
 from pathlib import Path
 
-from parsing.labeler import LabelResult, SectionLabeler
+from parsing.labeler import STANDALONE_LABELS, LabelResult, SectionLabeler
 from parsing.models import Paper, read_jsonl
 
 NUMERIC_NUMBER = re.compile(r"^\d+(\.\d+)*$")
-STANDALONE_LABELS = {"acknowledgments", "ethics"}
 
 
 def label_results(papers: list[Paper]) -> dict[str, LabelResult]:
@@ -89,7 +88,7 @@ def report_numeric_back_sections(papers: list[Paper]) -> None:
         if section.location == "back"
         and section.number
         and NUMERIC_NUMBER.match(section.number)
-        and not STANDALONE_LABELS & set(section.labels)
+        and not set(STANDALONE_LABELS) & set(section.labels)
     ]
     _title(f"4. Back sections with a numeric number (misplaced body text): {len(rows)}")
     for paper, section in rows:
