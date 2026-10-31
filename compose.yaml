@@ -1,0 +1,21 @@
+# The parser runs in the same image as the scrapers; GROBID runs next to it.
+services:
+  app:
+    build: .
+    image: scrapers
+    volumes: [".:/app"]  # live code + data/, so no rebuild after edits
+    environment:
+      GROBID_URL: http://grobid:8070
+    depends_on:
+      grobid:
+        condition: service_healthy
+
+  grobid:
+    image: grobid/grobid:0.9.1-crf
+    init: true
+    ulimits:
+      core: 0
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "localhost:8070/api/isalive"]
+      interval: 5s
+      retries: 60
