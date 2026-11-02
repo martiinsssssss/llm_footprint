@@ -167,7 +167,17 @@ These come mostly from GROBID; none of them puts LLM-generated text or ethics st
 
 ## Analysis (`analysis/`)
 
-Works on the parser's JSONL. `generate.py` (synthetic abstracts) and `classify.py` (human vs. LLM) are not implemented yet.
+Works on the parser's JSONL. `classify.py` (human vs. LLM) is not implemented yet.
+
+**Synthetic abstracts.** Ask Claude Code to use the `synthetic-abstract` agent (`.claude/agents/synthetic-abstract.md`), for example: *"use the synthetic-abstract agent for 2024_000001 and 2024_000002"*. For each paper it reads the paper text without the abstract (`python -m analysis.generate export <id>`), writes an abstract from the proposal's prompt, and saves it to `data/interim/synthetic/<id>.json` with the model and the prompt. The prompt asks for the original abstract's word count, so length does not give the source away; use `--words 150` to get the proposal's fixed length. Existing files are never replaced without `--force`.
+
+Run it from the repo root, with Docker running, either inside a `claude` session (type the request) or from the terminal:
+
+```bash
+claude -p "use the synthetic-abstract agent for 2024_000003 2024_000004"
+```
+
+`.claude/settings.json` allows the agent's two commands (`analysis.generate export` and `save`) to run without approval prompts, which `claude -p` cannot answer. Any other command still needs approval, so the agent cannot read the original abstracts.
 
 ```bash
 # Features of every abstract -> one CSV row per abstract (source = human)
@@ -179,3 +189,25 @@ docker compose run --rm --no-deps app -m analysis.disclosure data/processed/ismi
 Features (after Fröhling & Zubiaga 2021): character, syllable, word and sentence counts and their ratios, Flesch reading ease, type-token ratio, MTLD, stop-word and hapax shares, word 1/2/3-gram overlap between consecutive sentences, shares of words in the top 100/1,000/10,000 English words (`wordfreq`), and the share of each POS tag and named entities per 100 words (spaCy `en_core_web_sm`). A word is any token that is not punctuation or whitespace.
 
 `analysis.disclosure` does not overwrite an existing output (it may hold manual labels) unless you pass `--force`.
+
+To label the hits, open the QA page and label each paper (keys `1`–`4`, arrows to move). Every click saves to the CSV:
+
+```bash
+docker compose up -d qa      # then open http://localhost:8000
+docker compose stop qa       # when done
+```
+
+The page lives in `qa/` (`server.py` and `index.html`).
+
+Labels: `used_ai` (the authors disclose AI use), `no_ai_statement` (they state that they used no AI), `not_disclosure` (the paper studies or only mentions AI), `unsure`. The label and note go to every row of the paper.
+
+## Notebooks (`notebook/`)
+
+`feature_pca.ipynb`: PCA of the abstract features, by year (no ground truth yet, so the year is the proxy). It is saved with its outputs.
+
+```bash
+docker compose up -d notebook    # then open http://localhost:8888 (no token: the port only listens on this computer)
+docker compose stop notebook
+# Re-run from the command line after the features change:
+docker compose run --rm --no-deps -w /app/notebook app -m jupyter nbconvert --to notebook --execute --inplace feature_pca.ipynb
+```

@@ -10,6 +10,24 @@ services:
       grobid:
         condition: service_healthy
 
+  qa:  # page to label the AI-disclosure hits: http://localhost:8000
+    build: .
+    image: scrapers
+    volumes: [".:/app"]
+    command: ["-m", "qa.server", "data/processed/disclosure_hits_v1.csv"]
+    ports: ["127.0.0.1:8000:8000"]
+
+  notebook:  # JupyterLab on notebook/: http://localhost:8888 (no token, only reachable from this computer)
+    build: .
+    image: scrapers
+    volumes: [".:/app"]
+    working_dir: /app/notebook
+    environment:
+      PYTHONPATH: /app
+    command: ["-m", "jupyterlab", "--ip=0.0.0.0", "--port=8888", "--no-browser", "--allow-root",
+              "--IdentityProvider.token=", "--ServerApp.root_dir=/app/notebook"]
+    ports: ["127.0.0.1:8888:8888"]
+
   grobid:
     image: grobid/grobid:0.9.1-crf
     init: true
