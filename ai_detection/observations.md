@@ -11,8 +11,8 @@
 | Detector | Type | Score | AI direction | Status |
 |---|---|---|---|---|
 | EditLens (`pangram/editlens_roberta-large`) | Trained classifier, 4 buckets | 0–1, the expected bucket divided by 3 | higher = more AI | done |
-| Fast-DetectGPT (GPT-Neo-2.7B as sampling and scoring model) | Zero-shot | analytic criterion | higher = more AI | pending |
-| Binoculars (falcon-7b / falcon-7b-instruct, 4-bit, float16, Colab T4) | Zero-shot | log PPL / log X-PPL | **lower** = more AI | pending |
+| Fast-DetectGPT (GPT-Neo-2.7B as sampling and scoring model, float32, Colab T4) | Zero-shot | analytic criterion | higher = more AI | done |
+| Binoculars (falcon-7b / falcon-7b-instruct, 4-bit, float16, Colab T4) | Zero-shot | log PPL / log X-PPL | **lower** = more AI | done |
 
 ## EditLens
 
@@ -47,16 +47,78 @@ AUC for separating synthetic abstracts from real 2020–2022 abstracts: **0.84**
 4. **Real 2025 abstracts score higher than the synthetic ones** (0.476 vs 0.411; the synthetic abstract is higher in only 41% of 2025 pairs). This does not mean they are more AI-written than fully AI-written text. One hypothesis, not tested: the models 2024–2025 authors used, such as the GPT-4o generation, are closer to EditLens's training data than `claude-sonnet-5-5`, the newer model behind the synthetic set. The synthetic set is a valid positive control, but its generator is newer than the models 2024–2025 authors would have used.
 5. **Bucket 2 is almost never predicted** (1 of 1,306 abstracts). In practice EditLens separates these abstracts into "human", "lightly edited" and "fully AI".
 
-Note: these are descriptive statistics only. No significance tests have been run yet.
+## Binoculars
+
+Lower = more AI. The official thresholds are 0.9015 (accuracy) and 0.8536 (low false-positive rate). Under 4-bit quantization they are only approximate.
+
+| Year | n | Real mean | Real median | Real < 0.90 | Synthetic mean | Synthetic median | Synthetic < 0.90 | Synthetic < real |
+|---|---|---|---|---|---|---|---|---|
+| 2020 | 115 | 0.989 | 0.990 | 4.3% | 1.041 | 1.041 | 0% | 18% |
+| 2021 | 104 | 0.995 | 0.994 | 2.9% | 1.039 | 1.039 | 0% | 21% |
+| 2022 | 113 | 1.004 | 1.006 | 3.5% | 1.041 | 1.040 | 0% | 24% |
+| 2023 | 100 | 0.995 | 0.998 | 4.0% | 1.049 | 1.048 | 0% | 22% |
+| 2024 | 122 | 0.996 | 0.995 | 1.6% | 1.051 | 1.047 | 0% | 14% |
+| 2025 | 99 | 1.001 | 1.005 | 3.0% | 1.054 | 1.051 | 0% | 19% |
+
+AUC for separating synthetic from real 2020–2022 abstracts: **0.23**. Below 0.5 means the detector ranks them the wrong way round.
+
+### Observations
+
+1. **No trend in the real abstracts.** Means stay between 0.989 and 1.004 in every year, and the share below 0.90 stays between 1.6% and 4.3%. The most AI-like tail (10th percentile) does not move either.
+2. **The positive control fails, and fails inverted.** Not one synthetic abstract falls below 0.90. In about 80% of pairs, Binoculars rates the AI-written abstract as *more human* than the real one. The perplexity (log PPL) of the synthetic abstracts is higher than that of the real ones (3.42 vs 3.00): the generator's abstracts are less predictable to Falcon-7B than the human ones.
+3. **The setup is not to blame.** On 60 paper pairs, an unquantized float32 pair from another model family (Qwen2.5-0.5B base + Instruct, run locally) shows the same inversion: the synthetic abstract scores lower in only 10% of pairs, against 18% with Falcon in 4-bit on the same 60. The same Qwen pair correctly flags a generic AI-written paragraph (0.74). The implementation also matches the official code exactly in a test with small models.
+4. **Interpretation.** Binoculars detects text that is *more predictable* than an LLM would expect. The synthetic abstracts are dense summaries of a specific paper, full of its method names, datasets and numbers, written by a recent frontier model. Text like this is not predictable to a 2023 7B model. With this generator and prompt, Binoculars cannot detect AI-written abstracts. Its flat curve for the real abstracts is therefore **not evidence of no AI use**.
 
 ## Fast-DetectGPT
 
-_Pending._
+Higher = more AI. The raw criterion is reported, with no probability calibration. All scores were computed in one Colab run (the script does not record the dtype in its output; the run used float32).
 
-## Binoculars
+| Year | n | Real mean | Real median | Synthetic mean | Synthetic median | Synthetic > real |
+|---|---|---|---|---|---|---|
+| 2020 | 115 | −0.044 | −0.060 | −1.202 | −1.178 | 17% |
+| 2021 | 104 | −0.248 | −0.305 | −1.303 | −1.131 | 13% |
+| 2022 | 113 | −0.406 | −0.497 | −1.439 | −1.483 | 20% |
+| 2023 | 100 | −0.343 | −0.354 | −1.624 | −1.614 | 14% |
+| 2024 | 122 | −0.478 | −0.442 | −1.678 | −1.630 | 12% |
+| 2025 | 99 | −0.516 | −0.504 | −1.882 | −1.718 | 13% |
 
-_Pending._
+AUC for separating synthetic from real 2020–2022 abstracts: **0.18** (inverted, as with Binoculars).
+
+### Observations
+
+1. **The positive control fails, inverted.** Synthetic abstracts score about 1.2 points *lower* (more human) than real ones in every year, and are lower than their own real pair in 83–88% of pairs. Only 0.3% of synthetic abstracts exceed the 90th percentile of the real 2020–2022 scores.
+2. **Real scores drift down over time (toward "more human").** The mean falls from −0.04 (2020) to −0.52 (2025). The synthetic abstracts drift down by about the same amount, from −1.20 to −1.88, so the drift is not about who wrote the text. The most likely cause is the age of the scoring model. GPT-Neo-2.7B was trained on the Pile (data up to 2020), so later papers use terms and methods it has never seen (diffusion models, LLMs, newer datasets), which makes them less predictable to it. **This is a confound for any year comparison with an old scoring model.**
+3. **No sign of an AI-like tail after 2023.** About 10% of real abstracts exceed the 2020–2022 90th percentile in every year (5–10% from 2023 on).
 
 ## Agreement between detectors
 
-_Pending. Compare the per-year trends and the rank correlations of the scores per paper._
+Spearman rank correlation of the scores per paper. Binoculars is negated, so all three point the same way (higher = more AI):
+
+| | Real abstracts | Synthetic abstracts |
+|---|---|---|
+| Fast-DetectGPT vs Binoculars | 0.81 | 0.73 |
+| EditLens vs Fast-DetectGPT | 0.01 | 0.04 |
+| EditLens vs Binoculars | 0.06 | 0.02 |
+
+Per-year means of the real abstracts:
+
+| Year | EditLens ↑ | Fast-DetectGPT ↑ | Binoculars ↓ |
+|---|---|---|---|
+| 2020 | 0.187 | −0.044 | 0.989 |
+| 2021 | 0.188 | −0.248 | 0.995 |
+| 2022 | 0.193 | −0.406 | 1.004 |
+| 2023 | 0.259 | −0.343 | 0.995 |
+| 2024 | 0.349 | −0.478 | 0.996 |
+| 2025 | 0.476 | −0.516 | 1.001 |
+
+### Observations
+
+1. **The two zero-shot detectors measure the same thing; EditLens measures something else.** Fast-DetectGPT and Binoculars agree strongly (ρ = 0.81), since both score how predictable the text is to an LLM. EditLens is uncorrelated with both (ρ ≈ 0.01–0.06). The 59 real abstracts in EditLens's "fully AI" bucket (27 from 2025, 17 from 2024) look no different from the rest to the zero-shot detectors.
+2. **Only EditLens passes the positive control** (AUC 0.84 vs 0.23 and 0.18), and only EditLens shows a rise after 2022. With this generator and prompt, the zero-shot detectors do not detect AI-written abstracts, so their flat or falling curves say nothing about AI use in ISMIR abstracts.
+3. **Caveats for the synthetic control.**
+   - It comes from a single recent model (`claude-sonnet-5-5`) and a single task: writing an abstract *from the full paper*. Authors in 2023–2025 more likely used ChatGPT-era models (GPT-3.5, GPT-4, GPT-4o), mostly to *polish their own draft*, not to write from scratch.
+   - Zero-shot detectors are reported to work much better on older or smaller generators, so they may still catch that kind of text.
+   - A fairer control would add synthetic sets from (a) an older or open model (e.g. GPT-4o-mini, Llama-3-8B-Instruct) and (b) a "polish this human abstract" prompt, which mimics editing.
+4. **The year comparison needs a recent scoring model.** For zero-shot detectors, the downward drift of the synthetic Fast-DetectGPT scores shows that an old scoring model penalizes newer topics. A scoring model trained on data after 2025 (or the Llama-3 pair the Fast-DetectGPT README recommends) would reduce this confound, but would not remove it.
+
+Note: all numbers are descriptive statistics. No significance tests have been run yet.
