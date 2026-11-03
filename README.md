@@ -169,15 +169,26 @@ These come mostly from GROBID; none of them puts LLM-generated text or ethics st
 
 Works on the parser's JSONL. `classify.py` (human vs. LLM) is not implemented yet.
 
-**Synthetic abstracts.** Ask Claude Code to use the `synthetic-abstract` agent (`.claude/agents/synthetic-abstract.md`), for example: *"use the synthetic-abstract agent for 2024_000001 and 2024_000002"*. For each paper it reads the paper text without the abstract (`python -m analysis.generate export <id>`), writes an abstract from the proposal's prompt, and saves it to `data/interim/synthetic/<id>.json` with the model and the prompt. The prompt asks for the original abstract's word count, so length does not give the source away; use `--words 150` to get the proposal's fixed length. Existing files are never replaced without `--force`.
+**Synthetic abstracts.** `analysis.generate run` asks Claude for an abstract of each paper through the Claude Code CLI (`claude -p`, logged in with a Claude subscription; no API key). Every paper is a new session whose only input is one user message: the proposal's prompt, *"Write an ISMIR-style abstract of about {N} words for the attached research paper."*, then `---` and the paper text without its abstract (title and every section, as `export` prints it). N is the original abstract's word count, so length does not give the source away; `--words 150` gives the proposal's fixed length instead. The session has no tools, so it cannot read the original abstracts.
 
-Run it from the repo root, with Docker running, either inside a `claude` session (type the request) or from the terminal:
+It runs on the host (not in Docker), since it needs the CLI and its login. Point `CLAUDE_BIN` to the CLI if `claude` is not on your PATH (the VS Code extension ships one in `~/.vscode/extensions/anthropic.claude-code-*/resources/native-binary/claude`).
 
 ```bash
-claude -p "use the synthetic-abstract agent for 2024_000003 2024_000004"
+python3 -m analysis.generate sample --per-year 2 > analysis/synthetic_ids.txt   # fixed sample (seed 0)
+python3 -m analysis.generate run --ids-file analysis/synthetic_ids.txt --workers 4
 ```
 
-`.claude/settings.json` allows the agent's two commands (`analysis.generate export` and `save`) to run without approval prompts, which `claude -p` cannot answer. Any other command still needs approval, so the agent cannot read the original abstracts.
+`sample` shuffles each year's papers in a fixed order and takes the first N, so `--per-year 5` keeps the 2 per year already generated and adds 3. `run` skips papers that already have a file (`--force` replaces them) and prints one line per paper: `saved`, `skipped (exists)` or `failed (<reason>)`.
+
+Generation settings (constants in `analysis/generate.py`, saved in every record):
+
+- Model `claude-sonnet-5-5`, effort `high`, thinking off. Claude Code has no flag for Sonnet 5.5's `between_tools` thinking mode, so it is added to the request through `CLAUDE_CODE_EXTRA_BODY` (with Claude Code's thinking-clearing context edit removed, which the API rejects without thinking). A paper fails if the answer used any thinking tokens or came from another model.
+- `--system-prompt ""`, no tools, no settings, MCP servers, skills or session files. Claude Code still adds a short system prompt of its own (about 900 tokens: an agent identity and environment details such as the working directory and date), which cannot be removed with a subscription login (`--bare` needs an API key). Sessions run from the empty folder `/tmp/abstract` so that it names nothing about the project.
+- The model starts most answers with a `**Abstract**` line (12 of the first 12) and sometimes a bold title. `abstract` has these leading headings removed (`strip_label`); `raw_output` keeps the exact answer.
+
+Each `data/interim/synthetic/<id>.json` holds `paper_id`, `year`, `model`, `prompt`, `abstract`, `raw_output`, the settings above, `claude_code_version`, `generated_at` and the token counts. First run (12 papers, 2 per year, Claude Code 2.1.316): about 9.4k input and 430 output tokens and 4 s per paper; 15 s in total with 4 workers.
+
+The older `synthetic-abstract` agent (`.claude/agents/synthetic-abstract.md`) still works with `export` and `save`, but it adds Claude Code's full system prompt and the agent's instructions, so don't mix its abstracts with these.
 
 ```bash
 # Features of every abstract -> one CSV row per abstract (source = human)
