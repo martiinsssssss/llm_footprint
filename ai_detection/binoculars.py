@@ -56,10 +56,26 @@ def read_jsonl(path: Path) -> list[dict]:
         return [json.loads(line) for line in f]
 
 
+def use_plain_linear_in_falcon() -> None:
+    """Let bitsandbytes quantize Falcon.
+
+    Falcon builds its layers with FalconLinear, a subclass of nn.Linear with the
+    same math (x @ W.T + b). transformers' bitsandbytes integration only replaces
+    modules whose type is exactly nn.Linear, so it silently skips every Falcon
+    layer and the model loads unquantized (~13 GB in float16, which does not fit
+    twice on a 15 GB T4). Building plain nn.Linear layers instead fixes that.
+    """
+    from transformers.models.falcon import modeling_falcon
+
+    modeling_falcon.FalconLinear = torch.nn.Linear
+
+
 def load_model(name: str, dtype: torch.dtype, quantize: str, device: str):
     kwargs: dict = {"dtype": dtype}
     if quantize != "none":
         from transformers import BitsAndBytesConfig
+
+        use_plain_linear_in_falcon()
 
         kwargs["quantization_config"] = (
             BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_type="nf4", bnb_4bit_compute_dtype=dtype)
