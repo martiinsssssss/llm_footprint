@@ -212,9 +212,17 @@ The page lives in `qa/` (`server.py` and `index.html`).
 
 Labels: `used_ai` (the authors disclose AI use), `no_ai_statement` (they state that they used no AI), `not_disclosure` (the paper studies or only mentions AI), `unsure`. The label and note go to every row of the paper.
 
+**Distance analysis.** `python -m analysis.distance` compares human and LLM abstracts in the style-feature space (`FEATURES`, 25 columns), scaled by the human abstracts of 2020–2022 (REF). Every function takes `space="z"` (z-scores with REF's mean and SD) or `space="whitened"` (a PCA fitted on REF, each component divided by the square root of its eigenvalue; a robustness check, since features are correlated). It writes these tables to `analysis/results/distance/` (2,000 bootstrap replicates, seed 0); `notebook/comparison.ipynb` also saves the figures to `figures/` there:
+
+- `drift.csv`: `cos` and `proj` of each year's human drift against the LLM directions `claude_full`, `gpt_15` and `claude_15` (paired `Z_llm − Z_human` over 2020–2022 papers), with bootstrap CIs and a sign-flip null. `direction_agreement.csv`: the cosine between directions. The sign-flip null keeps a strong real direction up to its sign, so its bands are wide, and those for `proj` are on a different scale from the estimates (see the note in the notebook).
+- `centroid_distances.csv`, `group_feature_means.csv`: (year, source) centroids, the distances between them and to REF, and each feature's shift in REF SDs. ChatGPT groups have n = 5 (`small_n`).
+- `paired_similarity.csv`, `paired_similarity_by_year.csv`: cosine and Euclidean distance between the versions of each paper, and yearly means with CIs.
+
 ## Notebooks (`notebook/`)
 
 `feature_pca.ipynb`: PCA of the abstract features, by year (no ground truth yet, so the year is the proxy). It is saved with its outputs.
+
+`comparison.ipynb`: the table of human, Claude and ChatGPT abstracts, and the distance analysis (plots of `analysis.distance`).
 
 ```bash
 docker compose up -d notebook    # then open http://localhost:8888 (no token: the port only listens on this computer)

@@ -29,7 +29,7 @@ from parsing.models import Paper, read_jsonl
 JSONL = Path("data/processed/ismir_2020_2025_v1.jsonl")
 OUT_DIR = Path("data/interim/synthetic")
 # The proposal's prompt. The word count is the original abstract's length, so length is not a giveaway.
-PROMPT = "Write an ISMIR-style abstract of about {words} words for the attached research paper."
+PROMPT = "Write an ISMIR-style abstract of about 150 words for the attached research paper."
 
 # Generation settings, saved in every record. Changing one changes the dataset.
 MODEL = "claude-sonnet-5-5"
