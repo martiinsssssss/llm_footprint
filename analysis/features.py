@@ -19,14 +19,19 @@ from wordfreq import top_n_list
 from parsing.models import read_jsonl
 
 # Fixed tag and label lists, so every row has the same columns.
-POS_TAGS = ("ADJ", "ADP", "ADV", "AUX", "CCONJ", "DET", "INTJ", "NOUN", "NUM", "PART",
-            "PRON", "PROPN", "PUNCT", "SCONJ", "SYM", "VERB", "X")
-ENT_LABELS = ("CARDINAL", "DATE", "EVENT", "FAC", "GPE", "LANGUAGE", "LAW", "LOC", "MONEY",
-              "NORP", "ORDINAL", "ORG", "PERCENT", "PERSON", "PRODUCT", "QUANTITY", "TIME",
-              "WORK_OF_ART")  # the labels of en_core_web_sm (checked in the tests)
-TOP_N = (100, 1_000, 10_000)
-MAX_NGRAM = 3
+# INTJ, SYM and X are left out: 0 in 83-99% of the v1 abstracts.
+POS_TAGS = ("ADJ", "ADP", "ADV", "AUX", "CCONJ", "DET", "NOUN", "NUM", "PART",
+            "PRON", "PROPN", "PUNCT", "SCONJ", "VERB")
+# Only ORG (datasets, companies) is common in ISMIR abstracts. Every other label of en_core_web_sm is 0 in
+# 73-99.8% of the v1 abstracts and depends on the topic, not the style; CARDINAL repeats pos_NUM (rho 0.85).
+ENT_LABELS = ("ORG",)
+TOP_N = (1_000, 10_000)  # top 100 repeats stopword_share (rho 0.89 in v1)
+MAX_NGRAM = 2  # 3-gram overlap is 0 in 66% of the v1 abstracts
 MTLD_THRESHOLD = 0.72  # standard value (McCarthy & Jarvis 2010)
+# Not style features: the generation prompt asks for the original abstract's word count, so length cannot tell
+# human from LLM text. Kept in the CSV to check that the synthetic abstracts match the length; leave them out
+# of the PCA and the classifier.
+CONTROL_COLUMNS = ("n_words",)
 
 _TOP_WORDS = top_n_list("en", max(TOP_N))
 TOP_SETS = {n: set(_TOP_WORDS[:n]) for n in TOP_N}
@@ -47,22 +52,19 @@ def features(text: str) -> dict[str, float]:
     lower = [t.lower_ for t in words]
     sentences = [[t.lower_ for t in s if not (t.is_punct or t.is_space)] for s in doc.sents]
     sentences = [s for s in sentences if s]
-    n_words, n_syllables = len(words), textstat.syllable_count(text)
+    n_words = len(words)
     counts = Counter(lower)
     pos = Counter(t.pos_ for t in tokens)
     ents = Counter(e.label_ for e in doc.ents)
     return {
-        # Basic counts
-        "n_chars": len(text),
-        "n_syllables": n_syllables,
-        "n_words": n_words,
-        "n_sentences": len(sentences),
+        # Basic counts. n_chars, n_syllables (rho >= 0.92 with n_words) and syllables_per_word (rho 0.87 with
+        # chars_per_word, 0.84 with Flesch; syllable counts are unreliable for acronyms) were dropped, and so was
+        # n_sentences (= n_words / words_per_sentence: its style part is words_per_sentence, the rest is length).
+        "n_words": n_words,  # control column, see CONTROL_COLUMNS
         "chars_per_word": sum(len(t.text) for t in words) / n_words,
-        "syllables_per_word": n_syllables / n_words,
         "words_per_sentence": n_words / len(sentences),
         "flesch_reading_ease": textstat.flesch_reading_ease(text),
-        # Lexical diversity
-        "type_token_ratio": len(counts) / n_words,
+        # Lexical diversity. MTLD only: type-token ratio falls with text length (rho 0.51 with n_words in v1).
         "mtld": mtld(lower),
         # Repetitiveness
         "stopword_share": sum(t.is_stop for t in words) / n_words,

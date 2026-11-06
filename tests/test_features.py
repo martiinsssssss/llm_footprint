@@ -6,11 +6,11 @@ import math
 
 import pytest
 
-from analysis.features import ENT_LABELS, features, mtld, nlp, sentence_overlap
+from analysis.features import CONTROL_COLUMNS, ENT_LABELS, features, mtld, nlp, sentence_overlap
 
 
-def test_entity_labels_match_the_model() -> None:
-    assert set(ENT_LABELS) == set(nlp().get_pipe("ner").labels)
+def test_entity_labels_exist_in_the_model() -> None:
+    assert set(ENT_LABELS) <= set(nlp().get_pipe("ner").labels)
 
 
 def test_mtld_small_case() -> None:
@@ -30,12 +30,11 @@ def test_sentence_overlap() -> None:
 
 def test_features_on_short_text() -> None:
     f = features("The cat sat. The cat ran.")
-    assert (f["n_words"], f["n_sentences"]) == (6, 2)
+    assert f["n_words"] == 6
     assert f["words_per_sentence"] == 3
-    assert f["type_token_ratio"] == pytest.approx(4 / 6)
     assert f["overlap_1gram"] == pytest.approx(2 / 4)  # {the, cat} / {the, cat, sat, ran}
     assert f["pos_PUNCT"] == pytest.approx(2 / 8)
-    assert 0 < f["top100_share"] <= f["top1000_share"] <= f["top10000_share"] <= 1
+    assert 0 < f["top1000_share"] <= f["top10000_share"] <= 1
 
 
 def test_same_columns_for_every_text() -> None:
@@ -43,8 +42,19 @@ def test_same_columns_for_every_text() -> None:
 
 
 def test_named_entities_are_counted() -> None:
-    f = features("In 2021, Sony released a dataset in Tokyo.")
-    assert f["ent_ORG_per_100_words"] > 0 and f["ent_GPE_per_100_words"] > 0
+    f = features("In 2021, Sony released three datasets in Tokyo.")
+    assert f["ent_ORG_per_100_words"] > 0
+
+
+def test_dropped_features_are_gone() -> None:
+    f = features("In 2021, Sony released three datasets in Tokyo.")
+    dropped = {"n_chars", "n_syllables", "syllables_per_word", "top100_share", "overlap_3gram", "pos_X",
+               "ent_CARDINAL_per_100_words", "ent_GPE_per_100_words", "n_sentences", "type_token_ratio"}
+    assert not dropped & f.keys()
+
+
+def test_control_columns_are_features() -> None:
+    assert set(CONTROL_COLUMNS) <= features("We propose a model.").keys()
 
 
 def test_empty_text_raises() -> None:
