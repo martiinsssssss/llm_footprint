@@ -5,10 +5,10 @@ binoculars.py, for both the real and the synthetic abstracts, and writes:
 
   results/by_year.csv            per detector and year: real and synthetic mean/median (+ 95% CI)
   results/positive_control.csv   per detector: AUC synthetic vs real 2020-2022 (+ 95% CI), paired share
-  results/tests.csv              real abstracts 2023-2025 vs 2020-2022, trend over years, per-year tests
+  results/tests.csv              2023-2025 vs 2020-2022, trend over years, per-year tests (real and synthetic)
   results/agreement.csv          Spearman correlations between detectors
   results/editlens_shares.csv    EditLens share above 0.5 / 0.8 and predicted buckets, per year
-  results/figures/*.png          EditLens figures and the positive-control ROC curves
+  results/figures/*.png|pdf      EditLens figures and the positive-control ROC curves (PDF for LaTeX)
 
 Every detector is oriented so that HIGHER = MORE AI before AUCs, pair shares and
 correlations are computed (Binoculars is negated); tables of raw scores keep the original
@@ -140,31 +140,39 @@ def table_positive_control(real, synth, rng) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def table_tests(real) -> pd.DataFrame:
-    """Real abstracts only. Direction is reported with every test (positive = more AI later)."""
+def table_tests(real, synth) -> pd.DataFrame:
+    """Year effects in the real abstracts and, as a topic control, in the synthetic ones.
+
+    Direction is reported with every test (positive = more AI later). The synthetic
+    abstracts come from one model and one prompt, so a year effect there means the
+    detector reacts to content, not authorship.
+    """
     rows = []
-    pre = real.year.isin(PRE)
-    for name, (_, _, sign, label) in DETECTORS.items():
-        x = real[name] * sign
-        u = mannwhitneyu(x[~pre], x[pre])
-        rows.append(dict(detector=label, test="Mann-Whitney U, 2023-2025 vs 2020-2022 (two-sided)",
-                         statistic=u.statistic, effect=auc(x[~pre].values, x[pre].values),
-                         effect_name="AUC (P[2023-25 more AI than 2020-22])", p_value=u.pvalue, p_holm=np.nan))
-        tau = kendalltau(real.year, x)
-        rows.append(dict(detector=label, test="Kendall tau, year vs score", statistic=tau.statistic,
-                         effect=tau.statistic, effect_name="tau (>0: more AI over time)", p_value=tau.pvalue,
-                         p_holm=np.nan))
-        per_year = []
-        for y in sorted(real.year.unique()):
-            if y == min(PRE):
-                continue
-            ref = x[pre & (real.year != y)]
-            u = mannwhitneyu(x[real.year == y], ref)
-            per_year.append(dict(detector=label, test=f"Mann-Whitney U, {y} vs other 2020-2022 years",
-                                 statistic=u.statistic, effect=auc(x[real.year == y].values, ref.values),
-                                 effect_name="AUC", p_value=u.pvalue))
-        for row, p in zip(per_year, holm([r["p_value"] for r in per_year])):
-            rows.append(row | {"p_holm": p})
+    for corpus, df in (("real", real), ("synthetic", synth)):
+        pre = df.year.isin(PRE)
+        for name, (_, _, sign, label) in DETECTORS.items():
+            x = df[name] * sign
+            info = dict(corpus=corpus, detector=label)
+            u = mannwhitneyu(x[~pre], x[pre])
+            rows.append(info | dict(test="Mann-Whitney U, 2023-2025 vs 2020-2022 (two-sided)",
+                                    statistic=u.statistic, effect=auc(x[~pre].values, x[pre].values),
+                                    effect_name="AUC (P[2023-25 more AI than 2020-22])", p_value=u.pvalue,
+                                    p_holm=np.nan))
+            tau = kendalltau(df.year, x)
+            rows.append(info | dict(test="Kendall tau, year vs score", statistic=tau.statistic,
+                                    effect=tau.statistic, effect_name="tau (>0: more AI over time)",
+                                    p_value=tau.pvalue, p_holm=np.nan))
+            per_year = []
+            for y in sorted(df.year.unique()):
+                if y == min(PRE):
+                    continue
+                ref = x[pre & (df.year != y)]
+                u = mannwhitneyu(x[df.year == y], ref)
+                per_year.append(info | dict(test=f"Mann-Whitney U, {y} vs other 2020-2022 years",
+                                            statistic=u.statistic, effect=auc(x[df.year == y].values, ref.values),
+                                            effect_name="AUC", p_value=u.pvalue))
+            for row, p in zip(per_year, holm([r["p_value"] for r in per_year])):
+                rows.append(row | {"p_holm": p})
     return pd.DataFrame(rows)
 
 
@@ -201,6 +209,13 @@ def style(ax, grid="y"):
     ax.tick_params(colors=INK, labelsize=9)
 
 
+def save(fig, path: Path) -> None:
+    """PNG for viewing, PDF (vector) for the paper. Titles go in the LaTeX captions, not the images."""
+    fig.savefig(path.with_suffix(".png"), dpi=200)
+    fig.savefig(path.with_suffix(".pdf"))
+    plt.close(fig)
+
+
 def chatgpt_line(ax, label=True):
     ax.axvline(2022.5, color=GRAY, linewidth=1, linestyle=":")
     if label:
@@ -208,13 +223,8 @@ def chatgpt_line(ax, label=True):
                 color=GRAY, va="top")
 
 
-def fig_editlens_by_year(by_year, real, synth, out: Path) -> None:
-    """Mean score with 95% CI, share above 0.5, and paired comparison, per year."""
-    d = by_year[by_year.detector == "EditLens"]
+def _panel_mean(ax, d, real, synth) -> str:
     years = d.year.values
-    fig, axes = plt.subplots(1, 3, figsize=(13, 3.9))
-
-    ax = axes[0]
     for col, color, label, ls, mk in (("real", BLUE, "real abstracts", "-", "o"),
                                       ("synthetic", GRAY, "synthetic abstracts (Claude)", "--", "s")):
         m = d[f"{col}_mean"].values
@@ -224,21 +234,24 @@ def fig_editlens_by_year(by_year, real, synth, out: Path) -> None:
     ax.annotate(f"{d.real_mean.iloc[-1]:.2f}", (years[-1], d.real_mean.iloc[-1]), xytext=(6, 0),
                 textcoords="offset points", fontsize=8, color=INK, va="center")
     ax.set_ylabel("mean EditLens score (95% CI)", fontsize=9)
-    ax.set_title("a. Mean score", fontsize=10, loc="left")
     ax.set_ylim(0, 0.6)
     ax.legend(fontsize=8, frameon=False, loc="lower right")
+    return "Mean score"
 
-    ax = axes[1]
+
+def _panel_share(ax, d, real, synth) -> str:
     for df, color, label, ls, mk in ((real, BLUE, "real", "-", "o"), (synth, GRAY, "synthetic", "--", "s")):
         share = df.groupby("year").editlens.apply(lambda s: (s > 0.5).mean())
         ax.plot(share.index, share.values * 100, color=color, linestyle=ls, marker=mk, markersize=6, linewidth=2,
                 label=label)
     ax.set_ylabel("abstracts scoring above 0.5 (%)", fontsize=9)
-    ax.set_title("b. Share above 0.5", fontsize=10, loc="left")
     ax.set_ylim(0, 50)
     ax.legend(fontsize=8, frameon=False, loc="upper left")
+    return "Share above 0.5"
 
-    ax = axes[2]
+
+def _panel_paired(ax, d, real, synth) -> str:
+    years = d.year.values
     pair = d.synthetic_more_ai_than_pair.values * 100
     ax.bar(years, pair, width=0.6, color=[GRAY if y in PRE else BLUE for y in years])
     for y, v in zip(years, pair):
@@ -246,18 +259,77 @@ def fig_editlens_by_year(by_year, real, synth, out: Path) -> None:
     ax.axhline(50, color=INK, linewidth=0.8, linestyle="--")
     ax.text(2025.55, 50, "no\ndifference", fontsize=7.5, color=INK, ha="left", va="center", clip_on=False)
     ax.set_ylabel("papers whose synthetic abstract\nscores higher than the real one (%)", fontsize=9)
-    ax.set_title("c. Paired comparison", fontsize=10, loc="left")
     ax.set_ylim(0, 100)
+    return "Paired comparison"
 
-    for i, ax in enumerate(axes):
-        chatgpt_line(ax, label=(i == 0))
-        ax.set_xticks(years)
+
+SYNTH_X = 2026.3  # x position of the synthetic bar in the levels panel
+
+
+def _panel_levels(ax, d, real, synth) -> str:
+    """Stacked shares of the predicted levels per year, plus one bar for all synthetic abstracts."""
+    years = list(d.year.values)
+    groups = [real[real.year == y] for y in years] + [synth]
+    x = np.array(years + [SYNTH_X], dtype=float)
+    shares = np.array([[(g.editlens_bucket == b).mean() * 100 for b in range(4)] for g in groups])
+    bottom = np.zeros(len(groups))
+    for b in range(4):
+        ax.bar(x, shares[:, b], bottom=bottom, width=0.8, color=BUCKET_COLORS[b], edgecolor="white", linewidth=0.8,
+               label=BUCKET_LABELS[b])
+        bottom += shares[:, b]
+    ax.set_xticks(x, [str(y) for y in years] + ["synth."])
+    ax.set_xlim(years[0] - 0.6, SYNTH_X + 0.6)
+    ax.set_ylabel("abstracts (%)", fontsize=9)
+    ax.set_ylim(0, 100)
+    return "Predicted level"  # its legend is drawn by the figure (one row below all panels)
+
+
+PANELS = {"mean": _panel_mean, "share": _panel_share, "paired": _panel_paired, "levels": _panel_levels}
+
+
+def fig_editlens_by_year(by_year, real, synth, out: Path, panels=("mean", "share", "paired"),
+                         name="editlens_by_year", compact=False) -> None:
+    """Per-year EditLens panels side by side, lettered a, b, ... in the order given.
+
+    compact: drawn close to print size (about 7.8 in wide for three panels), with shorter
+    labels, so the text stays legible when the figure is scaled to the page width.
+    """
+    d = by_year[by_year.detector == "EditLens"]
+    w, h = (2.6, 2.75) if compact else (4.35, 3.9)
+    legend_w = (0.95 if compact else 1.5) if "levels" in panels else 0  # room for the levels legend
+    fig, axes = plt.subplots(1, len(panels), figsize=(w * len(panels) + legend_w, h))
+    for i, (ax, panel) in enumerate(zip(np.atleast_1d(axes), panels)):
+        title = PANELS[panel](ax, d, real, synth)
+        ax.set_title(f"{'abc'[i]}. {title}", fontsize=10, loc="left")
+        chatgpt_line(ax, label=(i == 0 and not compact))  # compact: the caption explains the line
+        if panel != "levels":  # the levels panel sets its own ticks (synthetic bar)
+            ax.set_xticks(d.year.values)
         ax.set_xlabel("ISMIR year", fontsize=9)
         style(ax)
-    fig.suptitle("EditLens scores of ISMIR abstracts, 2020–2025", fontsize=11, x=0.01, ha="left")
+        if compact:
+            ax.set_ylabel({"mean": "mean score (95% CI)", "share": "abstracts above 0.5 (%)",
+                           "paired": "synthetic scores higher (%)", "levels": "abstracts (%)"}[panel], fontsize=8)
+            ax.set_xlabel("")
+            ax.tick_params(labelsize=7)
+            plt.setp(ax.get_xticklabels(), rotation=45, ha="right", rotation_mode="anchor")
+            ax.title.set_fontsize(9)
+            for t in ax.texts:  # annotations (bar values, "no difference") scaled to print size
+                t.set_fontsize(min(t.get_fontsize(), 5.5 if panel == "levels" else 6.5))
+            if ax.get_legend():
+                handles, labels = ax.get_legend_handles_labels()
+                ax.legend(handles, [lab.replace(" abstracts", "") for lab in labels], fontsize=7, frameon=False,
+                          loc="upper left", handlelength=1.6)
+    if "levels" in panels:  # legend right of the levels panel, so it clearly belongs to that panel only
+        ax = np.atleast_1d(axes)[list(panels).index("levels")]
+        handles, labels = ax.get_legend_handles_labels()
+        if compact:
+            labels = [lab.split(" · ")[1].replace("AI-edited", "edited") for lab in labels]
+        fs = 7 if compact else 8
+        ax.legend(handles[::-1], labels[::-1], fontsize=fs, title="predicted\nlevel", title_fontsize=fs,
+                  frameon=False, loc="upper left", bbox_to_anchor=(1.02, 1.0), handlelength=1.2,
+                  alignment="left")
     fig.tight_layout()
-    fig.savefig(out / "editlens_by_year.png", dpi=200)
-    plt.close(fig)
+    save(fig, out / name)
 
 
 def fig_editlens_distribution(real, synth, out: Path) -> None:
@@ -282,11 +354,9 @@ def fig_editlens_distribution(real, synth, out: Path) -> None:
     ax.set_ylabel("EditLens score (0 = human, 1 = fully AI)", fontsize=9)
     ax.set_ylim(-0.02, 1.02)
     ax.legend(fontsize=8, frameon=False, loc="upper left")
-    ax.set_title("EditLens score of every abstract, by year", fontsize=11, loc="left")
     style(ax)
     fig.tight_layout()
-    fig.savefig(out / "editlens_distribution_by_year.png", dpi=200)
-    plt.close(fig)
+    save(fig, out / "editlens_distribution_by_year")
 
 
 def fig_editlens_buckets(real, synth, out: Path) -> None:
@@ -301,20 +371,15 @@ def fig_editlens_buckets(real, synth, out: Path) -> None:
         ax.bar(x, shares[:, b], bottom=bottom, width=0.62, color=BUCKET_COLORS[b], edgecolor="white", linewidth=1,
                label=BUCKET_LABELS[b])
         bottom += shares[:, b]
-    for xi, s in zip(x, shares[:, 3]):  # label the "fully AI" segment
-        ax.text(xi, 100 - s / 2 if s >= 6 else 100 - s - 3, f"{s:.0f}%", ha="center", va="center", fontsize=8,
-                color="white" if s >= 6 else INK)
     ax.axvline((x[len(years) - 4] + x[len(years) - 3]) / 2, color=GRAY, linewidth=1, linestyle=":")
     ax.set_xticks(x, [g for g, _ in groups])
     ax.set_ylabel("abstracts (%)", fontsize=9)
     ax.set_ylim(0, 100)
     ax.legend(fontsize=8, frameon=False, loc="upper left", bbox_to_anchor=(1.0, 1.0), title="predicted bucket",
               title_fontsize=8, reverse=True)
-    ax.set_title("EditLens predicted bucket, by year", fontsize=11, loc="left")
     style(ax)
     fig.tight_layout()
-    fig.savefig(out / "editlens_buckets_by_year.png", dpi=200)
-    plt.close(fig)
+    save(fig, out / "editlens_buckets_by_year")
 
 
 def fig_positive_control(real, synth, pc: pd.DataFrame, out: Path) -> None:
@@ -335,11 +400,9 @@ def fig_positive_control(real, synth, pc: pd.DataFrame, out: Path) -> None:
     ax.set_ylim(0, 1)
     ax.set_aspect("equal")
     ax.legend(fontsize=8, frameon=False, loc="upper center", bbox_to_anchor=(0.5, -0.13))
-    ax.set_title("Positive control: synthetic vs pre-ChatGPT abstracts", fontsize=10, loc="left")
     style(ax, grid="both")
     fig.tight_layout()
-    fig.savefig(out / "positive_control_roc.png", dpi=200)
-    plt.close(fig)
+    save(fig, out / "positive_control_roc")
 
 
 # ---------------------------------------------------------------- main
@@ -357,7 +420,7 @@ def main() -> None:
 
     by_year = table_by_year(real, synth, rng)
     pc = table_positive_control(real, synth, rng)
-    tests = table_tests(real)
+    tests = table_tests(real, synth)
     agreement = table_agreement(real, synth)
     shares = table_editlens_shares(real, synth)
     for name, df in (("by_year", by_year), ("positive_control", pc), ("tests", tests), ("agreement", agreement),
@@ -365,6 +428,9 @@ def main() -> None:
         df.to_csv(args.out / f"{name}.csv", index=False)
 
     fig_editlens_by_year(by_year, real, synth, figs)
+    fig_editlens_by_year(by_year, real, synth, figs, ("mean", "paired"), "editlens_by_year_ac")
+    fig_editlens_by_year(by_year, real, synth, figs, ("mean", "paired", "levels"), "editlens_summary",
+                         compact=True)
     fig_editlens_distribution(real, synth, figs)
     fig_editlens_buckets(real, synth, figs)
     fig_positive_control(real, synth, pc, figs)
