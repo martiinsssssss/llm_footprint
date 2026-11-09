@@ -1,3 +1,8 @@
 torch>=2.2
 transformers>=4.44
 huggingface_hub>=0.34
+# analysis (analyze.py)
+numpy>=1.26
+scipy>=1.11
+pandas>=2.1
+matplotlib>=3.8

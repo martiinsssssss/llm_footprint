@@ -1,9 +1,26 @@
 # AI-detection observations on ISMIR abstracts (2020–2025)
 
+**Reproducing.** Every table and test below, plus the figures in `results/figures/`, comes from one script. It needs the six score files (`{editlens,fastdetectgpt,binoculars}_{abstracts,synthetic}_v1.jsonl`, in the shared Drive) in `../data` and takes about 10 seconds:
+
+```bash
+python -m ai_detection.analyze            # writes ai_detection/results/*.csv and results/figures/*.png
+```
+
+Figures:
+- `editlens_by_year.png`: mean score (95% CI), share above 0.5, and the paired comparison, per year.
+- `editlens_distribution_by_year.png`: every abstract's score, by year.
+- `editlens_buckets_by_year.png`: EditLens's predicted bucket, by year.
+- `positive_control_roc.png`: ROC curves of all three detectors, synthetic vs real 2020–2022 abstracts.
+
 ## Data
 
 - **Real abstracts:** `abstracts_clean_v1.jsonl`. These are 653 ISMIR abstracts from 2020–2025, taken from the parser output (dataset v1) and cleaned with `ai_detection/cleaning.py`, which removes footnotes and broken URLs. Two papers are dropped because their abstract field holds something else: `2023_000014` (a figure caption) and `2024_000108` (the abstract plus part of the introduction).
 - **Synthetic abstracts:** `synthetic_abstracts_v1.jsonl`, made with `ai_detection/synthetic.py`. There is one per real paper, written by `claude-sonnet-5-5` from the full paper with the prompt "Write an ISMIR-style abstract of about N words…". N is the length of the real abstract. The same two papers are dropped, so both sets have the same 653 paper IDs and every real abstract has a synthetic pair.
+- **How the synthetic set was generated** (branch `feature/analysis`: `analysis/generate.py` and `.claude/agents/synthetic-abstract.md`):
+  - A Claude Sonnet agent received the prompt and the paper's title and section texts, **with the original abstract removed**.
+  - It was told to write only from that text: no web search, nothing remembered about the paper, and no other abstracts.
+  - N is the word count of the original GROBID abstract, so length does not give the synthetic abstract away.
+  - In 8 of the 653 outputs the agent added a markdown `**Abstract**` header or a word-count note. `synthetic.py` removes these; no other text is changed.
 - **Role of the synthetic set:** it is a positive control. Every synthetic abstract is fully AI-written, on the same paper and at about the same length as its real pair.
 
 ## Detectors
@@ -121,4 +138,43 @@ Per-year means of the real abstracts:
    - A fairer control would add synthetic sets from (a) an older or open model (e.g. GPT-4o-mini, Llama-3-8B-Instruct) and (b) a "polish this human abstract" prompt, which mimics editing.
 4. **The year comparison needs a recent scoring model.** For zero-shot detectors, the downward drift of the synthetic Fast-DetectGPT scores shows that an old scoring model penalizes newer topics. A scoring model trained on data after 2025 (or the Llama-3 pair the Fast-DetectGPT README recommends) would reduce this confound, but would not remove it.
 
-Note: all numbers are descriptive statistics. No significance tests have been run yet.
+## Significance tests (`results/tests.csv`, `results/positive_control.csv`)
+
+Real abstracts only, with each detector oriented so that higher = more AI. Mann-Whitney U tests are two-sided. The per-year tests compare each year with the other 2020–2022 years and are Holm-corrected within each detector. AUC = probability that a random abstract from the first group scores as more AI than one from the second (0.5 = no difference). CIs come from 2,000 bootstrap resamples.
+
+| | EditLens | Fast-DetectGPT | Binoculars |
+|---|---|---|---|
+| Positive control: AUC synthetic vs real 2020–2022 [95% CI] | **0.84 [0.81, 0.87]** | 0.18 [0.15, 0.21] | 0.23 [0.20, 0.26] |
+| Real 2023–2025 vs 2020–2022: AUC, p | **0.71, p = 3·10⁻²⁰** | 0.44, p = 0.014 (toward *more human*) | 0.49, p = 0.78 |
+| Trend over 2020–2025: Kendall τ, p | **+0.29, p = 8·10⁻²⁵** | −0.10, p = 0.0003 | −0.04, p = 0.15 |
+| 2021 / 2022 vs other 2020–2022 years (Holm p) | 1.00 / 1.00 | 0.79 / 0.06 | 1.00 / 0.07 |
+| 2023 / 2024 / 2025 vs 2020–2022: AUC (Holm p) | **0.61 (0.003) / 0.70 (< 10⁻⁴) / 0.82 (< 10⁻⁴)** | 0.47 / 0.43 / 0.43 (all ≥ 0.12) | 0.50 / 0.51 / 0.47 (all 1.00) |
+
+- **EditLens:** the rise is significant from 2023 on and grows every year. The 2020–2022 reference years do not differ from each other (Holm p = 1.00), so the baseline is stable.
+- **Fast-DetectGPT:** the only significant change goes in the *human* direction, which is the scoring-model drift described above. It is not evidence about AI use.
+- **Binoculars:** no change at all.
+
+## Ready-made detectors also checked, and not used
+
+Two more off-the-shelf detectors were checked to see whether a trained classifier other than EditLens would pass the positive control.
+
+**Setup:**
+- A paired sample of 200 papers (seed 0): 100 from 2020–2022 and 100 from 2023–2025, with each paper's real and synthetic abstract (400 texts).
+- EditLens on the same 200 papers for comparison.
+- The scripts were one-off and not kept. The numbers are recorded here so the result can be cited.
+
+**Detectors:**
+- **RADAR** (`TrustSafeAI/RADAR-Vicuna-7B`): a RoBERTa-large classifier trained adversarially against a Vicuna-7B paraphraser (2023). Non-commercial license.
+- **adaptive-classifier** (`adaptive-classifier/ai-detector`): a small classification head on frozen RADAR embeddings, trained on 2,000 EditLens examples.
+
+| | RADAR | adaptive-classifier | EditLens (same 200 papers) |
+|---|---|---|---|
+| A generic AI-written paragraph, P(AI) | 0.94 | 0.26 (called human) | — |
+| Mean P(AI): real 2020–22 / real 2023–25 / synthetic | 0.06 / 0.03 / 0.006 | 0.150 / 0.149 / 0.157 | 0.20 / 0.35 / 0.38 |
+| AUC synthetic vs real 2020–22 | **0.03** (inverted) | 0.65 | **0.82** |
+| Synthetic abstract scores higher than its real pair | 2% | 62% | 70% |
+| Real abstracts with P(AI) > 0.5: 2020–22 / 2023–25 | 4% / 0% | 0% / 0% | 7% / 26% |
+
+**RADAR** recognizes old-style AI text, but it rates the synthetic abstracts as *more human* than the real ones. This is the same inversion as Fast-DetectGPT and Binoculars, only stronger. **adaptive-classifier** gives almost every text about 0.15, so it is uninformative.
+
+**Conclusion:** of the five ready-to-use detectors tried, only EditLens detects this generator's text. It is also the only one trained on AI-*edited* text, the most likely way ISMIR authors use LLMs.
