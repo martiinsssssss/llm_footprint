@@ -1,0 +1,7 @@
+pair,corpus,spearman_rho,p_value
+EditLens vs Fast-DetectGPT,real,0.012597408219546354,0.747976651331441
+EditLens vs Fast-DetectGPT,synthetic,0.03816746610268769,0.33014966789728556
+EditLens vs Binoculars,real,0.05782101187605781,0.1399561283735193
+EditLens vs Binoculars,synthetic,0.020048546779825767,0.6090796157046673
+Fast-DetectGPT vs Binoculars,real,0.8093884329319521,1.2637520075757571e-152
+Fast-DetectGPT vs Binoculars,synthetic,0.728114031114518,7.159999007235832e-109
