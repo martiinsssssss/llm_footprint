@@ -37,7 +37,7 @@ To use them, download the JSONL and the CSV into `data/processed/`:
 from pathlib import Path
 from parsing.models import read_jsonl
 
-papers = read_jsonl(Path("data/processed/ismir_2020_2025_v1.jsonl"))
+papers = read_jsonl(Path("data/processed/ismir_2020_2025_v2.jsonl"))
 ```
 
 Every upload keeps its version in the file name, and nothing is overwritten. This table records which git commit produced each version:
@@ -45,6 +45,7 @@ Every upload keeps its version in the file name, and nothing is overwritten. Thi
 | Version | Git commit | Date | Changes |
 |---|---|---|---|
 | v1 | `939fa4a` | 2026-10-20 | first version: 655 papers |
+| v2 | *(fill in after commit)* | 2026-11-04 | removes the ISMIR copyright footnote that GROBID left in the text of 117 papers (5,818 words; 53 of them from 2020) |
 
 **Versioning rule:** any change to cleaning or labeling produces a new `v{N}` (new file names, new row in the table above, new `pipeline_version` in the records). Don't mix versions in one analysis.
 
@@ -64,13 +65,13 @@ One JSON object per line, sorted by `paper_id`:
 | `warnings` | list[str] | quality flags, see [Quality report](#quality-report) |
 | `artifacts` | dict | extraction artifact counts, see [Quality report](#quality-report) |
 | `parser` | str | `"grobid"` |
-| `pipeline_version` | str | `"v1"` |
+| `pipeline_version` | str | `"v2"` |
 
 Section fields: `heading` (as printed), `number` (`"3"`, `"3.1"` or `null`), `location` (`"body"` or `"back"`, where GROBID put it), `labels` (never empty), `text` (cleaned; paragraphs separated by a blank line).
 
 Section labels: `introduction`, `related_work`, `discussion`, `conclusion`, `acknowledgments`, `ethics`, `appendix`, and `body` for everything else (method, data, experiments, results…). A section can have several labels ("DISCUSSION AND CONCLUSION" → `[discussion, conclusion]`). The labeling rules (subsections, GROBID's false headings, appendices, ethics statements) are in Section 5 of the [plan](docs/parser_plan.md).
 
-Text cleaning, identical for every paper: Unicode NFKC (ligatures), removal of control characters, joining of line-break hyphens (`clas- sifies` → `classifies`, compounds like `state-of-the-art` kept), removal of citation brackets, URLs and e-mails, of the empty brackets and stray spaces they leave, whitespace normalization, and removal of letter-by-letter noise (runs of 30 or more single-character tokens, e.g. LaTeX image data that some PDFs carry as invisible text: `A A A C 1 n i c j V H L…`). Citation markers, formulas, figures, tables, footnotes and the bibliography are removed from the GROBID output before that.
+Text cleaning, identical for every paper: Unicode NFKC (ligatures), removal of control characters, joining of line-break hyphens (`clas- sifies` → `classifies`, compounds like `state-of-the-art` kept), removal of the ISMIR copyright footnote when GROBID leaves it in the text ("© Authors. Licensed under a Creative Commons Attribution 4.0 International License … Information Retrieval Conf., City, Year."; when GROBID turned "©" into "c", mostly in 2020, the author names before "Licensed" stay), removal of citation brackets, URLs and e-mails, of the empty brackets and stray spaces they leave, whitespace normalization, and removal of letter-by-letter noise (runs of 30 or more single-character tokens, e.g. LaTeX image data that some PDFs carry as invisible text: `A A A C 1 n i c j V H L…`). Citation markers, formulas, figures, tables, footnotes and the bibliography are removed from the GROBID output before that.
 
 ### Notes for the analysis
 
@@ -99,7 +100,7 @@ def style_text(paper) -> str:
 
 v1 summary: no parse errors, no missing metadata or abstracts. `no_conclusion` is 7.2% overall (11.3% in 2020, 3.5–10.1% in other years): mostly papers that end with a discussion. All artifact rates are ≤ 0.006 per 1,000 words in every year; the few `split_words` hits are false positives (math notation such as `W e ∈ R`). Letter-by-letter noise removed: 29.0 tokens per 1,000 words in 2020, 11.5 in 2021, 2.3 in 2022 and below 0.3 from 2023 on, 20,681 tokens in total from 18 papers, mostly 2020_000099 (9,968), 2021_000067 (4,929) and 2020_000188 (4,281). Without this step those three papers had about twice their real length.
 
-To recompute the report from a downloaded JSONL: `docker compose run --rm app -m parsing.quality data/processed/ismir_2020_2025_v1.jsonl`.
+To recompute the report from a downloaded JSONL: `docker compose run --rm app -m parsing.quality data/processed/ismir_2020_2025_v2.jsonl`.
 
 ### Running the parser
 
@@ -112,12 +113,12 @@ docker compose build                       # once, or after changing requirement
 **Run** (from the repository root):
 
 ```bash
-docker compose run --rm app -m parsing.run --out data/processed/ismir_2020_2025_v1.jsonl \
+docker compose run --rm app -m parsing.run --out data/processed/ismir_2020_2025_v2.jsonl \
   [--ids-file parsing/sample_ids.txt] [--years 2024 2025] [--workers 4] [--force]
 docker compose down                        # stop GROBID when done
 ```
 
-This writes the JSONL and `quality_report_v1.csv` next to it, and prints progress and a summary. `parsing/sample_ids.txt` is a 22-paper test set with normal papers and known edge cases. Re-running gives an identical file.
+This writes the JSONL and `quality_report_v2.csv` next to it, and prints progress and a summary. `parsing/sample_ids.txt` is a 22-paper test set with normal papers and known edge cases. Re-running gives an identical file.
 
 Processing all 655 PDFs takes about 5 minutes with 4 workers. TEI files are cached in `data/interim/tei/`, so later runs take seconds and only redo the cheap steps (`--force` ignores the cache). To skip GROBID's work entirely, download `tei_cache_v{N}.zip` from the Drive and unzip it so the files end up in `data/interim/tei/{year}/{paper_id}.tei.xml`: `unzip tei_cache_v1.zip -d data/interim/`. The run then gives exactly the same JSONL; use this to regenerate the dataset after changing the cleaning or labeling.
 
@@ -135,7 +136,7 @@ Processing all 655 PDFs takes about 5 minutes with 4 workers. TEI files are cach
 ```bash
 docker compose run --rm app -m pytest                     # unit tests (cleaner, labeler)
 docker compose run --rm app -m parsing.labeler            # debug: every section of the test set with labels and word counts
-docker compose run --rm app -m parsing.review data/processed/ismir_2020_2025_v1.jsonl  # label review reports
+docker compose run --rm app -m parsing.review data/processed/ismir_2020_2025_v2.jsonl  # label review reports
 ```
 
 `parsing.review` prints every `ethics` section, every section labeled `appendix` by the backfill rule, where each appendix region starts (flagging those that start before the conclusion), and the back sections with a numeric number (body text that GROBID misplaced).
@@ -204,6 +205,10 @@ Labels: `used_ai` (the authors disclose AI use), `no_ai_statement` (they state t
 ## Notebooks (`notebook/`)
 
 `feature_pca.ipynb`: PCA of the abstract features, by year (no ground truth yet, so the year is the proxy). It is saved with its outputs.
+
+`word_frequency.ipynb`: which adjectives, adverbs and verbs (spaCy lemmas) papers use more or less after ChatGPT, on the style text of dataset v2. For the 1,500 most common lemmas it compares the document frequency (share of papers that contain the word) in 2020–2022 vs. 2024–2025 (2023 left out), with Fisher's exact test, Benjamini–Hochberg correction and bootstrap confidence intervals. A t-test (before vs. after) and a one-way ANOVA and chi-square test (the six years) are run as cross-checks. Then it checks whether the change is more than normal drift: the same test on year pairs before ChatGPT, the excess over the 2020–2022 trend (after Kobak et al., with a placebo 2020–2021 → 2022), and the same test without the papers about LLMs. The spaCy output is cached in `data/interim/lemmas_v2.json` (about 1 minute to rebuild). It is saved with its outputs.
+
+`vocabulary_shift.ipynb`: the compact version of `word_frequency.ipynb` for the paper (report: `vocabulary_shift_report.md`), on the same style text and spaCy cache (`data/interim/lemmas_v2.json`). Fisher + Benjamini–Hochberg + bootstrap CIs, same-gap year pairs, excess over the 2020–2022 trend with a placebo, and the test without papers about LLMs. It also checks the test assumptions (one paper per lab, lab-level bootstrap, Benjamini–Yekutieli). The Nature-style figure (Liberation Sans, installed in the Docker image) goes to `notebook/figures/`.
 
 ```bash
 docker compose up -d notebook    # then open http://localhost:8888 (no token: the port only listens on this computer)

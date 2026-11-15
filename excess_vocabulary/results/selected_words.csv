@@ -1,0 +1,118 @@
+method,selection,selected_on_fold,rank,word,pos,in_kobak_lexicon
+flat,2023-2025,A,1,additionally,ADV,True
+flat,2023-2025,A,2,within,ADP,True
+flat,2023-2025,A,3,like,ADJ,True
+flat,2023-2025,A,4,consisting,VERB,False
+flat,2023-2025,A,5,multiple,ADJ,False
+flat,2023-2025,A,6,diverse,ADJ,True
+flat,2023-2025,A,7,struggle,VERB,True
+flat,2023-2025,A,8,current,ADJ,False
+flat,2023-2025,A,9,simple,ADJ,False
+flat,2023-2025,A,10,dynamic,ADJ,False
+flat,2023-2025,A,11,introduces,VERB,True
+flat,2023-2025,A,12,resulting,VERB,True
+flat,2023-2025,A,13,reveal,VERB,False
+flat,2023-2025,A,14,maintaining,VERB,True
+flat,2023-2025,A,15,enables,VERB,False
+flat,2023-2025,B,1,capture,VERB,False
+flat,2023-2025,B,2,despite,SCONJ,True
+flat,2023-2025,B,3,support,VERB,False
+flat,2023-2025,B,4,furthermore,ADV,False
+flat,2023-2025,B,5,diverse,ADJ,True
+flat,2023-2025,B,6,among,ADP,False
+flat,2023-2025,B,7,critical,ADJ,False
+flat,2023-2025,B,8,comprehensive,ADJ,True
+flat,2023-2025,B,9,jointly,ADV,False
+flat,2023-2025,B,10,current,ADJ,False
+flat,2023-2025,B,11,assess,VERB,True
+flat,2023-2025,B,12,competitive,ADJ,False
+flat,2023-2025,B,13,achieving,VERB,True
+flat,2023-2025,B,14,extensive,ADJ,False
+flat,2023-2025,B,15,offer,VERB,True
+flat,placebo 2022,A,1,due,ADP,False
+flat,placebo 2022,A,2,known,VERB,False
+flat,placebo 2022,A,3,since,SCONJ,False
+flat,placebo 2022,A,4,moreover,ADV,False
+flat,placebo 2022,A,5,promising,ADJ,True
+flat,placebo 2022,A,6,multiple,ADJ,False
+flat,placebo 2022,A,7,specific,ADJ,False
+flat,placebo 2022,A,8,during,ADP,False
+flat,placebo 2022,A,9,shows,VERB,False
+flat,placebo 2022,A,10,applied,VERB,False
+flat,placebo 2022,A,11,much,ADV,False
+flat,placebo 2022,A,12,despite,SCONJ,True
+flat,placebo 2022,A,13,challenging,ADJ,False
+flat,placebo 2022,A,14,find,VERB,False
+flat,placebo 2022,A,15,them,PRON,False
+flat,placebo 2022,B,1,typically,ADV,True
+flat,placebo 2022,B,2,achieve,VERB,False
+flat,placebo 2022,B,3,taken,VERB,False
+flat,placebo 2022,B,4,any,DET,False
+flat,placebo 2022,B,5,designed,VERB,False
+flat,placebo 2022,B,6,require,VERB,False
+flat,placebo 2022,B,7,computational,ADJ,False
+flat,placebo 2022,B,8,towards,ADP,False
+flat,placebo 2022,B,9,simple,ADJ,False
+flat,placebo 2022,B,10,discuss,VERB,False
+flat,placebo 2022,B,11,significantly,ADV,False
+flat,placebo 2022,B,12,developed,VERB,False
+flat,placebo 2022,B,13,fine,ADV,False
+flat,placebo 2022,B,14,involves,VERB,True
+flat,placebo 2022,B,15,public,ADJ,False
+linear,2023-2025,A,1,fine,ADV,False
+linear,2023-2025,A,2,additionally,ADV,True
+linear,2023-2025,A,3,within,ADP,True
+linear,2023-2025,A,4,consisting,VERB,False
+linear,2023-2025,A,5,diverse,ADJ,True
+linear,2023-2025,A,6,pretrained,VERB,False
+linear,2023-2025,A,7,struggle,VERB,True
+linear,2023-2025,A,8,current,ADJ,False
+linear,2023-2025,A,9,dynamic,ADJ,False
+linear,2023-2025,A,10,introduces,VERB,True
+linear,2023-2025,A,11,resulting,VERB,True
+linear,2023-2025,A,12,maintaining,VERB,True
+linear,2023-2025,A,13,like,ADJ,True
+linear,2023-2025,A,14,enables,VERB,False
+linear,2023-2025,A,15,yet,CCONJ,False
+linear,2023-2025,B,1,support,VERB,False
+linear,2023-2025,B,2,among,ADP,False
+linear,2023-2025,B,3,diverse,ADJ,True
+linear,2023-2025,B,4,critical,ADJ,False
+linear,2023-2025,B,5,including,VERB,True
+linear,2023-2025,B,6,along,ADP,False
+linear,2023-2025,B,7,assess,VERB,True
+linear,2023-2025,B,8,offer,VERB,True
+linear,2023-2025,B,9,compared,VERB,False
+linear,2023-2025,B,10,utilizing,VERB,True
+linear,2023-2025,B,11,rich,ADJ,False
+linear,2023-2025,B,12,applying,VERB,False
+linear,2023-2025,B,13,evaluated,VERB,False
+linear,2023-2025,B,14,additional,ADJ,False
+linear,2023-2025,B,15,largely,ADV,False
+linear,placebo 2022,A,1,due,ADP,False
+linear,placebo 2022,A,2,make,VERB,False
+linear,placebo 2022,A,3,known,VERB,False
+linear,placebo 2022,A,4,moreover,ADV,False
+linear,placebo 2022,A,5,multiple,ADJ,False
+linear,placebo 2022,A,6,promising,ADJ,True
+linear,placebo 2022,A,7,specific,ADJ,False
+linear,placebo 2022,A,8,during,ADP,False
+linear,placebo 2022,A,9,applied,VERB,False
+linear,placebo 2022,A,10,much,ADV,False
+linear,placebo 2022,A,11,despite,SCONJ,True
+linear,placebo 2022,A,12,whether,SCONJ,False
+linear,placebo 2022,A,13,provides,VERB,False
+linear,placebo 2022,B,1,typically,ADV,True
+linear,placebo 2022,B,2,taken,VERB,False
+linear,placebo 2022,B,3,designed,VERB,False
+linear,placebo 2022,B,4,computational,ADJ,False
+linear,placebo 2022,B,5,developed,VERB,False
+linear,placebo 2022,B,6,any,DET,False
+linear,placebo 2022,B,7,due,ADP,False
+linear,placebo 2022,B,8,perform,VERB,False
+linear,placebo 2022,B,9,require,VERB,False
+linear,placebo 2022,B,10,known,VERB,False
+linear,placebo 2022,B,11,resulting,VERB,True
+linear,placebo 2022,B,12,few,ADJ,False
+linear,placebo 2022,B,13,possible,ADJ,False
+linear,placebo 2022,B,14,experimental,ADJ,False

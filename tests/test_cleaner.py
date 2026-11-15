@@ -112,6 +112,31 @@ def test_removes_urls_and_emails(raw: str, expected: str) -> None:
     assert clean(raw) == expected
 
 
+# 5b. ISMIR copyright footnote
+
+FOOTNOTE = ('Licensed under a Creative Commons Attribution 4.0 International License (CC BY 4.0). '
+            'Attribution: E. Quinton, "Equivariant self-supervision for musical tempo estimation", '
+            'in Proc. of the 23rd Int. Society for Music Information Retrieval Conf., Bengaluru, India, 2022.')
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        (f"downstream tasks © E. Quinton. {FOOTNOTE}\n\nthat are", "downstream tasks\n\nthat are"),
+        # GROBID turned "©" into "c": the author names stay, the rest goes
+        (f"the problem c K. Tanaka. {FOOTNOTE} We use", "the problem c K. Tanaka. We use"),
+        (FOOTNOTE.replace("Conf., Bengaluru, India", "Conf., Online"), ""),
+    ],
+)
+def test_removes_license_footnote(raw: str, expected: str) -> None:
+    assert clean(raw) == expected
+
+
+def test_keeps_dataset_license_mentions() -> None:
+    text = "released under a Creative Commons Attribution 4.0 International License for further research."
+    assert clean(text) == text
+
+
 # 6. Empty brackets and spaces before punctuation
 
 

@@ -23,6 +23,18 @@ URL = re.compile(r"(?:https?://|www\.)\S+(?:(?<=[./])\s+[a-z0-9][\w.\-~%]*/\S*)*
 URL_TRAILING_PUNCTUATION = ".,;:)]"
 EMAIL = re.compile(r"\b[\w.+\-]+@[\w\-]+(?:\.[\w\-]+)+\b")
 
+# The ISMIR copyright footnote, which GROBID sometimes leaves in the body text
+# (mostly in 2020): "© Authors. Licensed under a Creative Commons Attribution 4.0
+# International License (CC BY 4.0). Attribution: Authors, "Title", in Proc. of
+# the 21st Int. Society for Music Information Retrieval Conf., City, 2020."
+# The "© Authors." part is removed only when the "©" survived; when GROBID turned
+# it into a "c" (often glued to the previous word) the author names stay.
+LICENSE_FOOTNOTE = re.compile(
+    r"(?:©[^©\n]{0,400}?)?Licensed under a Creative Commons Attribution"
+    r".*?Information Retrieval Conf(?:erence)?\.?,[^\n]*?\b(?:19|20)\d\d\.",
+    re.DOTALL,
+)
+
 # Brackets left empty (or with only separators) after removing their content.
 EMPTY_BRACKETS = re.compile(r"\([\s,;]*\)|\[[\s,;]*\]")
 # A "." followed by a digit is a decimal (".154"), not punctuation.
@@ -54,6 +66,7 @@ class TextCleaner:
         """Clean the text; also return how many tokens the char-run step removed."""
         text = unicodedata.normalize("NFKC", text)  # ligatures -> letters ("ﬁ" -> "fi")
         text = self._remove_bad_characters(text)
+        text = LICENSE_FOOTNOTE.sub(" ", text)
         text = LINE_BREAK_HYPHEN.sub("", text)
         text = CITATION_BRACKET.sub("", text)
         text = EMAIL.sub("", URL.sub(_keep_trailing_punctuation, text))
