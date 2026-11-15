@@ -34,7 +34,7 @@ class Paper:
     warnings: list[str] = field(default_factory=list)
     artifacts: dict[str, int] = field(default_factory=dict)
     parser: str = "grobid"
-    pipeline_version: str = "v1"
+    pipeline_version: str = "v2"
 
     @property
     def full_text(self) -> str:
