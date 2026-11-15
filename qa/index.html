@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Disclosure QA</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f6f6f4; --surface: #ffffff; --sidebar: #eeeeea; --hover: #e4e4df;
+    --text: #1d1d1b; --muted: #5f5f58; --line: #deded8;
+    --accent: #2747d6; --on-accent: #ffffff;
+    --mark: #ffe17a; --priority: #fbf3d5;
+    --used_ai: #c2410c; --no_ai_statement: #15803d; --not_disclosure: #64645d; --unsure: #a16207;
+    --on-label: #ffffff; --danger: #b91c1c;
+    --radius: 6px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161615; --surface: #1f1f1d; --sidebar: #1a1a18; --hover: #2a2a27;
+      --text: #ececea; --muted: #a8a8a0; --line: #31312e;
+      --accent: #8aa2ff; --on-accent: #0e1222;
+      --mark: #6b5212; --priority: #29230f;
+      --used_ai: #fb923c; --no_ai_statement: #4ade80; --not_disclosure: #a8a8a0; --unsure: #facc15;
+      --on-label: #161615; --danger: #f87171;
+    }
+  }
+  * { box-sizing: border-box; }
+  ::selection { background: var(--mark); color: var(--text); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  body {
+    margin: 0; height: 100dvh; display: grid; grid-template-columns: 288px minmax(0, 1fr);
+    background: var(--bg); color: var(--text); font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  button, select, textarea { font: inherit; color: inherit; }
+  kbd {
+    font: 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace; padding: 2px 5px; border-radius: 4px;
+    border: 1px solid var(--line); background: var(--surface); color: var(--muted);
+  }
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* Sidebar */
+  aside { display: flex; flex-direction: column; min-height: 0; background: var(--sidebar); border-right: 1px solid var(--line); }
+  .side-head { padding: 16px 16px 12px; display: grid; gap: 10px; border-bottom: 1px solid var(--line); }
+  .app-name { font-weight: 650; font-size: 15px; }
+  .progress-text { font-size: 13px; color: var(--muted); }
+  .progress { height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
+  .progress span { display: block; height: 100%; background: var(--accent); transition: width 200ms ease-out; }
+  .filter { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+  select { padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+  #list { flex: 1; overflow-y: auto; padding: 4px 8px 12px; }
+  .year { margin: 14px 8px 4px; font-size: 12px; font-weight: 600; color: var(--muted); display: flex; justify-content: space-between; }
+  .row {
+    display: flex; align-items: center; gap: 8px; width: 100%; padding: 5px 8px; border: 0; border-radius: var(--radius);
+    background: none; text-align: left; font-size: 13.5px; cursor: pointer;
+  }
+  .row:hover { background: var(--hover); }
+  .row[aria-current="true"] { background: var(--accent); color: var(--on-accent); }
+  .row .id { flex: 1; }
+  .row .flag { font-size: 11px; color: var(--muted); }
+  .row[aria-current="true"] .flag { color: inherit; }
+  .row[aria-current="true"] .dot { border-color: currentColor; }
+  .row[aria-current="true"] .dot[style*="--c"] { background: currentColor; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; background: var(--c, transparent); border: 1.5px solid var(--c, var(--muted)); }
+  .side-keys { padding: 10px 16px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); display: grid; gap: 6px; }
+  .side-keys span { display: flex; gap: 4px; align-items: center; }
+
+  /* Main */
+  main { overflow-y: auto; min-width: 0; }
+  .page { max-width: 920px; margin: 0 auto; padding: 28px 32px 64px; }
+  .mobile-nav { display: none; gap: 8px; margin-bottom: 16px; }
+  .mobile-nav select { flex: 1; min-width: 0; }
+  h1 { font-size: 21px; line-height: 1.3; font-weight: 650; margin: 0 0 6px; text-wrap: balance; }
+  .meta { margin: 0; color: var(--muted); font-size: 13.5px; }
+  .decide {
+    position: sticky; top: 0; z-index: 1; margin-top: 16px; padding: 12px 0;
+    background: var(--bg); border-bottom: 1px solid var(--line);
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px;
+  }
+  .labels { display: flex; flex-wrap: wrap; gap: 8px; }
+  .label-btn {
+    display: inline-flex; align-items: center; gap: 8px; padding: 7px 12px; cursor: pointer;
+    border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface);
+    transition: background-color 150ms ease-out, border-color 150ms ease-out;
+  }
+  .label-btn:hover { border-color: var(--c); }
+  .label-btn .dot { --c: inherit; background: var(--c); border-color: var(--c); }
+  .label-btn[aria-pressed="true"] { background: var(--c); border-color: var(--c); color: var(--on-label); font-weight: 600; }
+  .label-btn[aria-pressed="true"] .dot { background: var(--on-label); border-color: var(--on-label); }
+  .label-btn[aria-pressed="true"] kbd { background: transparent; color: inherit; border-color: currentColor; }
+  .label-btn:disabled { opacity: 0.6; cursor: progress; }
+  .nav-btn { padding: 7px 10px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); cursor: pointer; }
+  .nav-btn:hover:not(:disabled) { background: var(--hover); }
+  .nav-btn:disabled { opacity: 0.45; cursor: default; }
+  #status { font-size: 13px; color: var(--muted); }
+  #status.error { color: var(--danger); }
+  .note { display: block; margin-top: 16px; font-size: 13px; color: var(--muted); }
+  textarea {
+    display: block; width: 100%; margin-top: 4px; min-height: 40px; padding: 8px 10px; resize: vertical;
+    border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface);
+  }
+
+  /* Hits */
+  .group { margin-top: 24px; }
+  .group.priority { background: var(--priority); border-radius: var(--radius); padding: 4px 16px 8px; margin-left: -16px; margin-right: -16px; }
+  .group h2 { margin: 12px 0 4px; font-size: 13px; font-weight: 600; display: flex; gap: 8px; align-items: baseline; }
+  .group h2 .tag, .group h2 .n { font-weight: 400; color: var(--muted); }
+  .group ul { list-style: none; margin: 0; padding: 0; }
+  .group li { padding: 8px 0; border-top: 1px solid var(--line); max-width: 75ch; }
+  .group li:first-child { border-top: 0; }
+  mark { background: var(--mark); color: inherit; border-radius: 3px; padding: 0 2px; }
+  .state { margin: 20vh auto 0; max-width: 46ch; text-align: center; color: var(--muted); }
+  .state strong { display: block; color: var(--text); font-size: 17px; margin-bottom: 6px; }
+  .state code { font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+  @media (max-width: 860px) {
+    body { grid-template-columns: minmax(0, 1fr); }
+    aside { display: none; }
+    .mobile-nav { display: flex; }
+    .page { padding: 16px 16px 48px; }
+    .labels { width: 100%; }
+    .label-btn { flex: 1 1 calc(50% - 4px); justify-content: center; }
+    .label-btn kbd { display: none; }
+    .group.priority { margin-left: -8px; margin-right: -8px; padding: 4px 8px 8px; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<aside>
+  <div class="side-head">
+    <div class="app-name">Disclosure QA</div>
+    <div class="progress" aria-hidden="true"><span id="progress-fill" style="width: 0"></span></div>
+    <div class="progress-text num" id="progress-text"></div>
+    <label class="filter">Show
+      <select id="filter"></select>
+    </label>
+  </div>
+  <nav id="list" aria-label="Papers"></nav>
+  <div class="side-keys">
+    <span><kbd>1</kbd>–<kbd>4</kbd> label and go to next</span>
+    <span><kbd>←</kbd><kbd>→</kbd> previous or next paper</span>
+    <span><kbd>esc</kbd> leave the note field</span>
+  </div>
+</aside>
+<main id="main"><div class="state"><strong>Loading papers…</strong></div></main>
+<script>
+const NAMES = { used_ai: "Discloses AI use", no_ai_statement: "States no AI used", not_disclosure: "Not a disclosure", unsure: "Unsure" };
+const PRIORITY = /acknowledgments|ethics/;
+let labels = [], papers = [], current = 0;
+
+function el(tag, attrs = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [key, value] of Object.entries(attrs)) {
+    if (key.startsWith("on") || key in node && key !== "style") node[key] = value;
+    else node.setAttribute(key, value);
+  }
+  node.append(...children.flat().filter(c => c !== null && c !== undefined && c !== false));
+  return node;
+}
+
+function dot(label) {
+  return el("span", { class: "dot", style: label ? `--c: var(--${label})` : "" });
+}
+
+async function load() {
+  try {
+    const response = await fetch("/papers");
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    ({ labels, papers } = await response.json());
+  } catch (error) {
+    document.getElementById("main").replaceChildren(el("div", { class: "state" },
+      el("strong", {}, "Could not load the papers"),
+      "Check that the QA service runs: ", el("code", {}, "docker compose up -d qa"), ` (${error.message})`));
+    return;
+  }
+  for (const p of papers) p.priority = p.hits.some(h => PRIORITY.test(h.section_labels));
+  current = Math.max(0, papers.findIndex(p => !p.label));
+  render();
+}
+
+function matches(p) {
+  const filter = document.getElementById("filter").value || "all";
+  return filter === "all" || (filter === "unlabeled" ? !p.label : p.label === filter);
+}
+
+function visible() {
+  return papers.map((p, i) => i).filter(i => i === current || matches(papers[i]));
+}
+
+function renderFilter() {
+  const select = document.getElementById("filter");
+  const value = select.value || "all";
+  const count = test => papers.filter(test).length;
+  select.replaceChildren(
+    el("option", { value: "all" }, `All papers (${papers.length})`),
+    el("option", { value: "unlabeled" }, `Unlabeled (${count(p => !p.label)})`),
+    ...labels.map(l => el("option", { value: l }, `${NAMES[l]} (${count(p => p.label === l)})`)));
+  select.value = value;
+}
+
+function renderSidebar() {
+  const done = papers.filter(p => p.label).length;
+  document.getElementById("progress-fill").style.width = `${papers.length ? 100 * done / papers.length : 0}%`;
+  document.getElementById("progress-text").textContent = `${done} of ${papers.length} papers labeled`;
+  renderFilter();
+  const rows = [];
+  let year = null;
+  const shown = visible();
+  for (const i of shown) {
+    const p = papers[i];
+    if (p.year !== year) {
+      year = p.year;
+      rows.push(el("div", { class: "year" }, year, el("span", { class: "num" }, shown.filter(j => papers[j].year === year).length)));
+    }
+    rows.push(el("button", {
+      class: "row", "aria-current": i === current ? "true" : "false",
+      title: p.label ? NAMES[p.label] : "Not labeled", onclick: () => go(i),
+    }, dot(p.label), el("span", { class: "id num" }, p.paper_id), p.priority ? el("span", { class: "flag" }, "ack/ethics") : null));
+  }
+  const list = document.getElementById("list");
+  list.replaceChildren(...rows);
+  list.querySelector('[aria-current="true"]')?.scrollIntoView({ block: "nearest" });
+}
+
+function highlighted(sentence, spans) {
+  const out = [];
+  let pos = 0;
+  for (const [start, end] of spans) {
+    if (end <= pos) continue;
+    const from = Math.max(start, pos);
+    out.push(sentence.slice(pos, from), el("mark", {}, sentence.slice(from, end)));
+    pos = end;
+  }
+  out.push(sentence.slice(pos));
+  return out;
+}
+
+function sectionGroups(hits) {
+  const groups = [];
+  for (const hit of hits) {
+    const last = groups.at(-1);
+    if (last && last.section === hit.section && last.labels === hit.section_labels) last.hits.push(hit);
+    else groups.push({ section: hit.section, labels: hit.section_labels, hits: [hit] });
+  }
+  return groups.sort((a, b) => PRIORITY.test(b.labels) - PRIORITY.test(a.labels));
+}
+
+function renderPaper() {
+  const main = document.getElementById("main");
+  const p = papers[current];
+  if (!p) {
+    main.replaceChildren(el("div", { class: "state" }, el("strong", {}, "No hits to review"),
+      "The disclosure CSV has no rows. Run analysis.disclosure first."));
+    return;
+  }
+  const order = visible(), at = order.indexOf(current);
+  const groups = sectionGroups(p.hits);
+  const terms = [...new Set(p.hits.flatMap(h => h.terms.split("|")))].join(", ");
+  const note = el("textarea", { id: "note", rows: 2, placeholder: "Why this label, or anything to check later" });
+  note.value = p.note;
+  note.addEventListener("change", () => save(p, p.label, note.value));
+  note.addEventListener("keydown", e => { if (e.key === "Escape") note.blur(); });
+
+  main.replaceChildren(el("div", { class: "page" },
+    el("div", { class: "mobile-nav" },
+      el("button", { class: "nav-btn", disabled: at <= 0, onclick: () => go(order[at - 1]), "aria-label": "Previous paper" }, "←"),
+      el("select", { "aria-label": "Paper", onchange: e => go(Number(e.target.value)) },
+        ...order.map(i => el("option", { value: i, selected: i === current },
+          `${papers[i].paper_id}${papers[i].label ? " · " + NAMES[papers[i].label] : ""}`))),
+      el("button", { class: "nav-btn", disabled: at >= order.length - 1, onclick: () => go(order[at + 1]), "aria-label": "Next paper" }, "→")),
+    el("h1", {}, p.title || "Untitled paper"),
+    el("p", { class: "meta num" }, `${p.paper_id} · ${p.year} · ${p.hits.length} ${p.hits.length === 1 ? "sentence" : "sentences"} in ${groups.length} ${groups.length === 1 ? "section" : "sections"} · ${terms}`),
+    el("div", { class: "decide" },
+      el("div", { class: "labels", role: "group", "aria-label": "Label this paper" },
+        ...labels.map((label, k) => el("button", {
+          class: "label-btn", style: `--c: var(--${label})`, "aria-pressed": String(p.label === label),
+          onclick: () => choose(label),
+        }, dot(label), NAMES[label], el("kbd", {}, k + 1)))),
+      el("span", { id: "status", role: "status" })),
+    el("label", { class: "note" }, "Note", note),
+    ...groups.map(g => el("section", { class: "group" + (PRIORITY.test(g.labels) ? " priority" : "") },
+      el("h2", {}, g.section,
+        g.labels && g.labels.toLowerCase() !== g.section.toLowerCase() ? el("span", { class: "tag" }, g.labels.replaceAll("_", " ").replaceAll("|", ", ")) : null,
+        el("span", { class: "n num" }, g.hits.length > 1 ? `${g.hits.length} sentences` : "")),
+      el("ul", {}, ...g.hits.map(h => el("li", {}, ...highlighted(h.sentence, h.spans))))))));
+  main.scrollTop = 0;
+}
+
+function render() {
+  renderSidebar();
+  renderPaper();
+}
+
+function setStatus(text, isError = false) {
+  const status = document.getElementById("status");
+  if (!status) return;
+  status.textContent = text;
+  status.classList.toggle("error", isError);
+}
+
+// Saves run one after another, so a note save and a label save never land out of order.
+let queue = Promise.resolve();
+function save(paper, label, note) {
+  const run = queue.then(() => send(paper, label, note));
+  queue = run;
+  return run;
+}
+
+async function send(paper, label, note) {
+  setStatus("Saving…");
+  try {
+    const response = await fetch("/label", { method: "POST", body: JSON.stringify({ paper_id: paper.paper_id, label, note }) });
+    if (!response.ok) throw new Error((await response.json()).error);
+  } catch (error) {
+    setStatus(`Not saved: ${error.message}. Try again.`, true);
+    return false;
+  }
+  paper.label = label;
+  paper.note = note;
+  return true;
+}
+
+async function choose(label) {
+  const p = papers[current];
+  const buttons = document.querySelectorAll(".label-btn");
+  buttons.forEach(b => b.disabled = true);
+  const ok = await save(p, label, document.getElementById("note").value);
+  buttons.forEach(b => b.disabled = false);
+  if (!ok) return;
+  const next = [...papers.keys()].map(k => (current + 1 + k) % papers.length).find(i => !papers[i].label && matches(papers[i]));
+  if (next !== undefined) current = next;
+  render();
+  setStatus(next === undefined ? "Saved. Every paper in this view is labeled." : `Saved ${p.paper_id}`);
+}
+
+function go(i) {
+  if (i === undefined || i === current) return;
+  current = i;
+  render();
+}
+
+document.getElementById("filter").addEventListener("change", () => {
+  const first = visible().find(i => matches(papers[i]));
+  if (first !== undefined && !matches(papers[current])) current = first;
+  render();
+});
+
+document.addEventListener("keydown", e => {
+  if (e.metaKey || e.ctrlKey || e.altKey || ["TEXTAREA", "SELECT", "INPUT"].includes(e.target.tagName)) return;
+  const k = Number(e.key);
+  if (k >= 1 && k <= labels.length) { e.preventDefault(); choose(labels[k - 1]); return; }
+  const order = visible(), at = order.indexOf(current);
+  if (e.key === "ArrowRight") { e.preventDefault(); go(order[at + 1]); }
+  if (e.key === "ArrowLeft") { e.preventDefault(); go(order[at - 1]); }
+});
+
+load();
+</script>
+</body>
+</html>

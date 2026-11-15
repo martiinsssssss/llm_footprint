@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker compose run --rm --no-deps -T app -m analysis.generate export:*)",
+      "Bash(docker compose run --rm --no-deps -T app -m analysis.generate save:*)"
+    ]
+  }
+}

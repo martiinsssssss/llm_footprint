@@ -6,15 +6,15 @@ Each scraper lives in `scrapers/` and runs in one shared Docker image.
 
 ### ISMIR
 
-Downloads ISMIR papers (2020–2025) and saves metadata plus the abstract, discussion and conclusion of each paper to `<out>/metadata_<year>.csv` (one file per year; re-running a year replaces only that file). PDFs go to `<out>/pdfs/<year>/`. Change `$(pwd)/data` to pick the output folder.
+Downloads ISMIR papers (2020–2025) and saves metadata plus the abstract, discussion and conclusion of each paper to `<out>/metadata_<year>.csv` (one file per year; re-running a year replaces only that file). PDFs go to `<out>/pdfs/<year>/`. Change `--out data` to pick the output folder (a path inside the repository).
 
 The `doi` column is empty for 2020–2021: those conference pages link straight to the PDF instead of a DOI.
 
 ```bash
-docker build -t scrapers .                                                                  # build the image
-docker run --rm -v "$(pwd)/data:/data" scrapers scrapers/ismir.py --out /data                     # all years
-docker run --rm -v "$(pwd)/data:/data" scrapers scrapers/ismir.py --out /data --years 2024 2025   # some years
-docker run --rm -v "$(pwd)/data:/data" scrapers scrapers/ismir.py --out /data --limit 3           # quick test
+docker compose build                                                                  # build the image
+docker compose run --rm --no-deps app scrapers/ismir.py --out data                      # all years
+docker compose run --rm --no-deps app scrapers/ismir.py --out data --years 2024 2025    # some years
+docker compose run --rm --no-deps app scrapers/ismir.py --out data --limit 3            # quick test
 ```
 
 ## Parser (`parsing/`)
@@ -164,3 +164,50 @@ These come mostly from GROBID; none of them puts LLM-generated text or ethics st
 - **Stray footnote numbers:** footnote markers that GROBID doesn't tag stay in the text as lone digits (`…for weakly aligned data. 1 This procedure…`), about 190 in the corpus.
 - **Dashes dropped by GROBID** are not restored: `betweenborrowing` in 2024_000001 is already joined in GROBID's output.
 - Citation leftovers after "e.g."/"i.e." can leave punctuation such as `e.g.,.` (punctuation only), and "pre- and post-processing" becomes "preand post-processing".
+
+## Analysis (`analysis/`)
+
+Works on the parser's JSONL. `classify.py` (human vs. LLM) is not implemented yet.
+
+**Synthetic abstracts.** Ask Claude Code to use the `synthetic-abstract` agent (`.claude/agents/synthetic-abstract.md`), for example: *"use the synthetic-abstract agent for 2024_000001 and 2024_000002"*. For each paper it reads the paper text without the abstract (`python -m analysis.generate export <id>`), writes an abstract from the proposal's prompt, and saves it to `data/interim/synthetic/<id>.json` with the model and the prompt. The prompt asks for the original abstract's word count, so length does not give the source away; use `--words 150` to get the proposal's fixed length. Existing files are never replaced without `--force`.
+
+Run it from the repo root, with Docker running, either inside a `claude` session (type the request) or from the terminal:
+
+```bash
+claude -p "use the synthetic-abstract agent for 2024_000003 2024_000004"
+```
+
+`.claude/settings.json` allows the agent's two commands (`analysis.generate export` and `save`) to run without approval prompts, which `claude -p` cannot answer. Any other command still needs approval, so the agent cannot read the original abstracts.
+
+```bash
+# Features of every abstract -> one CSV row per abstract (source = human)
+docker compose run --rm --no-deps app -m analysis.features data/processed/ismir_2020_2025_v1.jsonl --out data/processed/features_v1.csv
+# Every sentence that mentions an AI tool -> CSV with an empty `label` column to fill by hand
+docker compose run --rm --no-deps app -m analysis.disclosure data/processed/ismir_2020_2025_v1.jsonl --out data/processed/disclosure_hits_v1.csv
+```
+
+Features (after Fröhling & Zubiaga 2021): characters per word, words per sentence, Flesch reading ease, MTLD, stop-word and hapax shares, word 1/2-gram overlap between consecutive sentences, shares of words in the top 1,000/10,000 English words (`wordfreq`), the share of each POS tag except `INTJ`, `SYM` and `X`, and `ORG` entities per 100 words (spaCy `en_core_web_sm`). A word is any token that is not punctuation or whitespace. Dropped from v1 because they are 0 in most abstracts (66–99.8%): rare POS tags, the other entity labels and 3-gram overlap. Dropped because they repeat another feature (Spearman ρ ≥ 0.84 in v1): character and syllable counts and syllables per word (`n_words`, `chars_per_word`, Flesch), top-100 share (`stopword_share`) and `CARDINAL` entities (`pos_NUM`). Dropped because they measure length: sentence count and type-token ratio (MTLD measures lexical diversity without the length effect). `n_words` stays in the CSV as a control column (`CONTROL_COLUMNS`): the generation prompt fixes the length, so it is not a style feature. Use it to check that the synthetic abstracts match the length, and leave it out of the PCA and the classifier.
+
+`analysis.disclosure` does not overwrite an existing output (it may hold manual labels) unless you pass `--force`.
+
+To label the hits, open the QA page and label each paper (keys `1`–`4`, arrows to move). Every click saves to the CSV:
+
+```bash
+docker compose up -d qa      # then open http://localhost:8000
+docker compose stop qa       # when done
+```
+
+The page lives in `qa/` (`server.py` and `index.html`).
+
+Labels: `used_ai` (the authors disclose AI use), `no_ai_statement` (they state that they used no AI), `not_disclosure` (the paper studies or only mentions AI), `unsure`. The label and note go to every row of the paper.
+
+## Notebooks (`notebook/`)
+
+`feature_pca.ipynb`: PCA of the abstract features, by year (no ground truth yet, so the year is the proxy). It is saved with its outputs.
+
+```bash
+docker compose up -d notebook    # then open http://localhost:8888 (no token: the port only listens on this computer)
+docker compose stop notebook
+# Re-run from the command line after the features change:
+docker compose run --rm --no-deps -w /app/notebook app -m jupyter nbconvert --to notebook --execute --inplace feature_pca.ipynb
+```
