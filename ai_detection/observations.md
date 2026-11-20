@@ -44,21 +44,21 @@ Mean scores per year. The last column is the share of paper pairs in which the s
 | 2024 | 122 | 0.349 | 0.319 | 0.416 | 0.371 | 62% |
 | 2025 | 99 | 0.476 | 0.447 | 0.411 | 0.381 | 41% |
 
-| Share of abstracts | Real 2020–2022 | Real 2023–2025 | Synthetic (all years) |
+| Share of abstracts | Real 2020–2022 | Real 2024–2025 | Synthetic (all years) |
 |---|---|---|---|
-| score > 0.5 | 5.7% | 23.7% | 23.0% |
-| score > 0.8 | 0.6% | 8.4% | 5.5% |
+| score > 0.5 | 5.7% | 29.4% | 23.0% |
+| score > 0.8 | 0.6% | 11.3% | 5.5% |
 
 | Predicted bucket | 0 (human) | 1 | 2 | 3 (fully AI) |
 |---|---|---|---|---|
 | Real | 353 | 240 | 1 | 59 |
 | Synthetic | 95 | 471 | 0 | 87 |
 
-AUC for separating synthetic abstracts from real 2020–2022 abstracts: **0.84**.
+AUC for separating synthetic abstracts (2023 papers left out) from real 2020–2022 abstracts: **0.84**.
 
 ### Observations
 
-1. **Real abstracts rise steadily after ChatGPT.** Scores are flat at about 0.19 for 2020–2022, then rise to 0.26 (2023), 0.35 (2024) and 0.48 (2025). The share above 0.5 grows from 5.7% before 2023 to 23.7% from 2023 on.
+1. **Real abstracts rise steadily after ChatGPT.** Scores are flat at about 0.19 for 2020–2022, then rise to 0.26 (2023), 0.35 (2024) and 0.48 (2025). The share above 0.5 grows from 5.7% in 2020–2022 to 29.4% in 2024–2025.
 2. **Changes in paper topics do not explain the rise.** The synthetic abstracts stay flat at about 0.41 in every year, although each is written from a paper of that year. If newer topics (for example more papers about LLMs) raised the scores by themselves, the synthetic scores would rise too.
 3. **EditLens underestimates fully AI-written abstracts from this generator.** Synthetic abstracts have a median of only 0.38, and 72% fall in bucket 1 rather than bucket 3. A likely reason is that they summarize the real paper and reuse its content and terminology, which EditLens may read as human text with light AI editing. EditLens scores therefore work for comparing years, but should not be read as an "X% AI" measure.
 4. **Real 2025 abstracts score higher than the synthetic ones** (0.476 vs 0.411; the synthetic abstract is higher in only 41% of 2025 pairs). This does not mean they are more AI-written than fully AI-written text. One hypothesis, not tested: the models 2024–2025 authors used, such as the GPT-4o generation, are closer to EditLens's training data than `claude-sonnet-5-5`, the newer model behind the synthetic set. The synthetic set is a valid positive control, but its generator is newer than the models 2024–2025 authors would have used.
@@ -99,7 +99,7 @@ Higher = more AI. The raw criterion is reported, with no probability calibration
 | 2024 | 122 | −0.478 | −0.442 | −1.678 | −1.630 | 12% |
 | 2025 | 99 | −0.516 | −0.504 | −1.882 | −1.718 | 13% |
 
-AUC for separating synthetic from real 2020–2022 abstracts: **0.18** (inverted, as with Binoculars).
+AUC for separating synthetic from real 2020–2022 abstracts: **0.19** (inverted, as with Binoculars).
 
 ### Observations
 
@@ -131,7 +131,7 @@ Per-year means of the real abstracts:
 ### Observations
 
 1. **The two zero-shot detectors measure the same thing; EditLens measures something else.** Fast-DetectGPT and Binoculars agree strongly (ρ = 0.81), since both score how predictable the text is to an LLM. EditLens is uncorrelated with both (ρ ≈ 0.01–0.06). The 59 real abstracts in EditLens's "fully AI" bucket (27 from 2025, 17 from 2024) look no different from the rest to the zero-shot detectors.
-2. **Only EditLens passes the positive control** (AUC 0.84 vs 0.23 and 0.18), and only EditLens shows a rise after 2022. With this generator and prompt, the zero-shot detectors do not detect AI-written abstracts, so their flat or falling curves say nothing about AI use in ISMIR abstracts.
+2. **Only EditLens passes the positive control** (AUC 0.84 vs 0.23 and 0.19), and only EditLens shows a rise after 2022. With this generator and prompt, the zero-shot detectors do not detect AI-written abstracts, so their flat or falling curves say nothing about AI use in ISMIR abstracts.
 3. **Caveats for the synthetic control.**
    - It comes from a single recent model (`claude-sonnet-5-5`) and a single task: writing an abstract *from the full paper*. Authors in 2023–2025 more likely used ChatGPT-era models (GPT-3.5, GPT-4, GPT-4o), mostly to *polish their own draft*, not to write from scratch.
    - Zero-shot detectors are reported to work much better on older or smaller generators, so they may still catch that kind of text.
@@ -140,19 +140,29 @@ Per-year means of the real abstracts:
 
 ## Significance tests (`results/tests.csv`, `results/positive_control.csv`)
 
-Real abstracts only, with each detector oriented so that higher = more AI. Mann-Whitney U tests are two-sided. The per-year tests compare each year with the other 2020–2022 years and are Holm-corrected within each detector. AUC = probability that a random abstract from the first group scores as more AI than one from the second (0.5 = no difference). CIs come from 2,000 bootstrap resamples.
+**Year groups (shared with the rest of the project):**
+- Before ChatGPT: 2020–2022. After: 2024–2025.
+- 2023 is a transition year (papers submitted a few months after ChatGPT's release) and is left out of every two-group comparison, including the positive control.
+- Per-year results still show 2023.
+
+**Tests:**
+- Each detector is oriented so that higher = more AI.
+- Mann-Whitney U tests are two-sided. AUC = probability that a random abstract from the first group scores as more AI than one from the second (0.5 = no difference). CIs come from 2,000 bootstrap resamples.
+- The per-year tests compare every year with the 2020–2022 reference years (a reference year with the other two) and are Holm-corrected over the six years within each detector.
 
 | | EditLens | Fast-DetectGPT | Binoculars |
 |---|---|---|---|
-| Positive control: AUC synthetic vs real 2020–2022 [95% CI] | **0.84 [0.81, 0.87]** | 0.18 [0.15, 0.21] | 0.23 [0.20, 0.26] |
-| Real 2023–2025 vs 2020–2022: AUC, p | **0.71, p = 3·10⁻²⁰** | 0.44, p = 0.014 (toward *more human*) | 0.49, p = 0.78 |
-| Trend over 2020–2025: Kendall τ, p | **+0.29, p = 8·10⁻²⁵** | −0.10, p = 0.0003 | −0.04, p = 0.15 |
-| 2021 / 2022 vs other 2020–2022 years (Holm p) | 1.00 / 1.00 | 0.79 / 0.06 | 1.00 / 0.07 |
-| 2023 / 2024 / 2025 vs 2020–2022: AUC (Holm p) | **0.61 (0.003) / 0.70 (< 10⁻⁴) / 0.82 (< 10⁻⁴)** | 0.47 / 0.43 / 0.43 (all ≥ 0.12) | 0.50 / 0.51 / 0.47 (all 1.00) |
+| Positive control: AUC synthetic vs real 2020–2022 [95% CI] | **0.84 [0.81, 0.87]** | 0.19 [0.16, 0.22] | 0.23 [0.20, 0.27] |
+| Real 2024–2025 vs 2020–2022: AUC, p | **0.75, p = 6·10⁻²⁴** | 0.43, p = 0.007 (toward *more human*) | 0.49, p = 0.65 |
+| Synthetic 2024–2025 vs 2020–2022 (topic control): AUC, p | 0.54, p = 0.10 | 0.37, p = 2·10⁻⁷ | 0.42, p = 0.003 |
+| Real 2020 / 2021 / 2022 vs the other reference years (Holm p) | 1.00 / 1.00 / 1.00 | **0.03** / 0.79 / 0.06 | 0.15 / 1.00 / 0.08 |
+| Real 2023 / 2024 / 2025 vs 2020–2022: AUC (Holm p) | **0.61 (0.004) / 0.70 (3·10⁻¹⁰) / 0.82 (3·10⁻²¹)** | 0.47 / 0.43 / 0.43 (all ≥ 0.12) | 0.50 / 0.51 / 0.47 (all 1.00) |
 
-- **EditLens:** the rise is significant from 2023 on and grows every year. The 2020–2022 reference years do not differ from each other (Holm p = 1.00), so the baseline is stable.
-- **Fast-DetectGPT:** the only significant change goes in the *human* direction, which is the scoring-model drift described above. It is not evidence about AI use.
-- **Binoculars:** no change at all.
+The trend over all six years is also in `tests.csv` (Kendall τ: EditLens +0.29, p = 8·10⁻²⁵).
+
+- **EditLens:** the rise is significant from 2023 on and grows every year. The three reference years do not differ from each other (Holm p = 1.00), so the baseline is stable. The synthetic abstracts do not change: no synthetic year differs from the reference years (Holm p ≥ 0.23), so new topics do not raise the scores.
+- **Fast-DetectGPT:** the only significant changes point toward *more human*. Both the real and the synthetic abstracts drift that way, and 2020 already differs from 2021–2022, which matches the scoring-model drift described above. It is not evidence about AI use.
+- **Binoculars:** no change in the real abstracts. The synthetic abstracts drift slightly toward *more human*, again a topic effect.
 
 ## Ready-made detectors also checked, and not used
 
@@ -162,6 +172,7 @@ Two more off-the-shelf detectors were checked to see whether a trained classifie
 - A paired sample of 200 papers (seed 0): 100 from 2020–2022 and 100 from 2023–2025, with each paper's real and synthetic abstract (400 texts).
 - EditLens on the same 200 papers for comparison.
 - The scripts were one-off and not kept. The numbers are recorded here so the result can be cited.
+- This check predates the year-group rule above. Its "2023–2025" sample includes 2023 papers, and it was not rerun.
 
 **Detectors:**
 - **RADAR** (`TrustSafeAI/RADAR-Vicuna-7B`): a RoBERTa-large classifier trained adversarially against a Vicuna-7B paraphraser (2023). Non-commercial license.

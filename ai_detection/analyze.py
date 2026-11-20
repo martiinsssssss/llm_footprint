@@ -5,7 +5,9 @@ binoculars.py, for both the real and the synthetic abstracts, and writes:
 
   results/by_year.csv            per detector and year: real and synthetic mean/median (+ 95% CI)
   results/positive_control.csv   per detector: AUC synthetic vs real 2020-2022 (+ 95% CI), paired share
-  results/tests.csv              2023-2025 vs 2020-2022, trend over years, per-year tests (real and synthetic)
+  results/tests.csv              2024-2025 vs 2020-2022, trend over years, per-year tests (real and synthetic)
+
+Two-group comparisons leave out 2023, a transition year (see PRE / POST below).
   results/agreement.csv          Spearman correlations between detectors
   results/editlens_shares.csv    EditLens share above 0.5 / 0.8 and predicted buckets, per year
   results/figures/*.png|pdf      EditLens figures and the positive-control ROC curves (PDF for LaTeX)
@@ -34,8 +36,12 @@ from scipy.stats import kendalltau, mannwhitneyu, spearmanr
 
 SEED = 0
 N_BOOT = 2000
+# Year groups shared with the rest of the project: 2023 is a transition year (papers submitted a
+# few months after ChatGPT's release), left out of every two-group comparison. Per-year results
+# (tables, figures, each year vs the reference years) still include it.
 PRE = (2020, 2021, 2022)  # before ChatGPT (Nov 2022)
-POST = (2023, 2024, 2025)
+POST = (2024, 2025)
+TRANSITION = (2023,)
 
 DETECTORS = {  # name: (file stem, score field, sign that makes higher = more AI, label)
     "editlens": ("editlens", "editlens_score", 1, "EditLens"),
@@ -129,14 +135,17 @@ def table_by_year(real, synth, rng) -> pd.DataFrame:
 
 
 def table_positive_control(real, synth, rng) -> pd.DataFrame:
+    """Synthetic abstracts (2023 papers left out) vs real 2020-2022 abstracts."""
     rows = []
     pre = real.year.isin(PRE).values
+    keep = ~synth.year.isin(TRANSITION).values
     for name, (_, _, sign, label) in DETECTORS.items():
         s, r = synth[name].values * sign, real[name].values * sign
-        a = auc(s, r[pre])
-        lo, hi = boot_ci(auc, [s, r[pre]], rng)
+        a = auc(s[keep], r[pre])
+        lo, hi = boot_ci(auc, [s[keep], r[pre]], rng)
         rows.append(dict(detector=label, auc_synthetic_vs_real_2020_22=a, ci_low=lo, ci_high=hi,
-                         synthetic_more_ai_than_pair=(s > r).mean(), n_synthetic=len(s), n_real_2020_22=pre.sum()))
+                         synthetic_more_ai_than_pair=(s[keep] > r[keep]).mean(), n_synthetic=int(keep.sum()),
+                         n_real_2020_22=int(pre.sum())))
     return pd.DataFrame(rows)
 
 
@@ -149,26 +158,26 @@ def table_tests(real, synth) -> pd.DataFrame:
     """
     rows = []
     for corpus, df in (("real", real), ("synthetic", synth)):
-        pre = df.year.isin(PRE)
+        pre, post = df.year.isin(PRE), df.year.isin(POST)
         for name, (_, _, sign, label) in DETECTORS.items():
             x = df[name] * sign
             info = dict(corpus=corpus, detector=label)
-            u = mannwhitneyu(x[~pre], x[pre])
-            rows.append(info | dict(test="Mann-Whitney U, 2023-2025 vs 2020-2022 (two-sided)",
-                                    statistic=u.statistic, effect=auc(x[~pre].values, x[pre].values),
-                                    effect_name="AUC (P[2023-25 more AI than 2020-22])", p_value=u.pvalue,
+            u = mannwhitneyu(x[post], x[pre])
+            rows.append(info | dict(test="Mann-Whitney U, 2024-2025 vs 2020-2022 (two-sided)",
+                                    statistic=u.statistic, effect=auc(x[post].values, x[pre].values),
+                                    effect_name="AUC (P[2024-25 more AI than 2020-22])", p_value=u.pvalue,
                                     p_holm=np.nan))
             tau = kendalltau(df.year, x)
-            rows.append(info | dict(test="Kendall tau, year vs score", statistic=tau.statistic,
+            rows.append(info | dict(test="Kendall tau, year vs score (all years)", statistic=tau.statistic,
                                     effect=tau.statistic, effect_name="tau (>0: more AI over time)",
                                     p_value=tau.pvalue, p_holm=np.nan))
+            # every year vs the reference years; a reference year is compared with the other two
             per_year = []
             for y in sorted(df.year.unique()):
-                if y == min(PRE):
-                    continue
                 ref = x[pre & (df.year != y)]
                 u = mannwhitneyu(x[df.year == y], ref)
-                per_year.append(info | dict(test=f"Mann-Whitney U, {y} vs other 2020-2022 years",
+                ref_label = "other 2020-2022 years" if y in PRE else "2020-2022"
+                per_year.append(info | dict(test=f"Mann-Whitney U, {y} vs {ref_label}",
                                             statistic=u.statistic, effect=auc(x[df.year == y].values, ref.values),
                                             effect_name="AUC", p_value=u.pvalue))
             for row, p in zip(per_year, holm([r["p_value"] for r in per_year])):
@@ -191,7 +200,7 @@ def table_agreement(real, synth) -> pd.DataFrame:
 def table_editlens_shares(real, synth) -> pd.DataFrame:
     rows = []
     groups = [(f"real {y}", real[real.year == y]) for y in sorted(real.year.unique())]
-    groups += [("real 2020-2022", real[real.year.isin(PRE)]), ("real 2023-2025", real[real.year.isin(POST)]),
+    groups += [("real 2020-2022", real[real.year.isin(PRE)]), ("real 2024-2025", real[real.year.isin(POST)]),
                ("synthetic (all years)", synth)]
     for label, df in groups:
         row = dict(group=label, n=len(df), share_above_0_5=(df.editlens > 0.5).mean(),
@@ -212,7 +221,7 @@ def style(ax, grid="y"):
 def save(fig, path: Path) -> None:
     """PNG for viewing, PDF (vector) for the paper. Titles go in the LaTeX captions, not the images."""
     fig.savefig(path.with_suffix(".png"), dpi=200)
-    fig.savefig(path.with_suffix(".pdf"))
+    fig.savefig(path.with_suffix(".pdf"), metadata={"CreationDate": None})  # no timestamp: reruns give identical files
     plt.close(fig)
 
 
@@ -226,7 +235,7 @@ def chatgpt_line(ax, label=True):
 def _panel_mean(ax, d, real, synth) -> str:
     years = d.year.values
     for col, color, label, ls, mk in (("real", BLUE, "real abstracts", "-", "o"),
-                                      ("synthetic", GRAY, "synthetic abstracts (Claude)", "--", "s")):
+                                      ("synthetic", GRAY, "synthetic abstracts", "--", "s")):
         m = d[f"{col}_mean"].values
         err = [m - d[f"{col}_mean_ci_low"].values, d[f"{col}_mean_ci_high"].values - m]
         ax.errorbar(years, m, yerr=err, color=color, linestyle=ls, marker=mk, markersize=6, linewidth=2,
